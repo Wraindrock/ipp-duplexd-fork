@@ -48,9 +48,15 @@ jobs:
           dir="repo/fedora/${{ matrix.release }}/x86_64"
           mkdir -p "$dir"
           cp packaging/*.rpm "$dir/"
-          createrepo_c --quiet "$dir"
+          # gzip, not createrepo_c's zstd default: every dnf/libdnf that might
+          # read this repository understands it.
+          createrepo_c --quiet --general-compress-type=gz "$dir"
           test -f "$dir/repodata/repomd.xml"
-          test -f "$dir/repodata/primary.xml.gz"
+          metadata="$(ls "$dir/repodata")"
+          case "$metadata" in
+            *primary.xml.gz*) ;;
+            *) echo "no primary metadata in $dir/repodata: $metadata"; exit 1 ;;
+          esac
 
       - uses: actions/upload-artifact@v4
         with:
@@ -59,7 +65,7 @@ jobs:
           if-no-files-found: error
 
   verify:
-    name: Install from the repository (Fedora ${{ matrix.release }})
+    name: Install from the repository
     needs: build
     runs-on: ubuntu-latest
     container: fedora:${{ matrix.release }}
