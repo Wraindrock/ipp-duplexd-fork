@@ -1,8 +1,9 @@
 # ipp-duplexd — manual duplex printing via a virtual IPP printer
 
 > This is a fork of [ipp-duplexd][upstream], adding i18n and a GUI manager.
-> Install from [COPR][copr] on Fedora and its derivatives, or build a
-> package locally with the scripts in [Packages](#packages).
+> On Fedora, install it with `dnf` from the [GitHub-hosted repository][repo];
+> everywhere else, build a package locally with the scripts in
+> [Packages](#packages).
 
 A small Rust daemon (one dependency, [rust-i18n][i18n]) that turns any
 simplex printer into a manual duplex printer. It is itself an IPP printer, listening on
@@ -44,44 +45,51 @@ with `rust2rpm`; `build-rpm.sh` also verifies the finished package (both
 binaries, the unit, the license, the `qpdf` dependency, and that no locale data
 was installed) and deletes it rather than leave a broken artifact.
 
-## Installing from COPR (Fedora, RHEL, openSUSE)
+## Installing on Fedora with dnf
 
-The fork is built in a [COPR][copr] repository, so Fedora and its derivatives
-get installs and updates through `dnf`. The project has to exist once (see the
-end of this section) before `dnf copr enable` can find it:
+The fork publishes its RPMs as a **dnf repository on GitHub Pages**, rebuilt on
+every release. No accounts, no downloading files by hand:
 
 ```sh
-sudo dnf copr enable wraindrock/ipp-duplexd
+sudo dnf config-manager addrepo --from-repofile=https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd.repo
+# dnf4 (Fedora 40 and older): sudo dnf config-manager --add-repo https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd.repo
 sudo dnf install ipp-duplexd
-sudo dnf upgrade          # later: picks up new builds
+sudo dnf upgrade            # later: picks up new builds
 ```
 
-openSUSE has the equivalent `copr` plugin for `zypper`, or use the `.rpm`
-from the release page.
+The repository is built in Fedora 43, Fedora 44 and Rawhide containers, and
+`$releasever`/`$basearch` in the repository file select the right directory, so
+this works on those three. On anything else — RHEL, openSUSE, an older or newer
+Fedora — `dnf` fails with "repomd.xml not found"; install the `.rpm` from the
+[releases page](https://github.com/Wraindrock/ipp-duplexd-fork/releases)
+instead. The repository keeps only the newest build per Fedora release; older
+versions stay on that page.
 
-COPR builds from `.copr/Makefile` (its "custom" source method): the Makefile
-turns the checkout into a self-contained SRPM — a versioned tarball holding the
-same file list as the distro scripts plus a copy of the spec with the version
-from `Cargo.toml` baked in — and COPR rebuilds that in each enabled chroot.
-The spec's `%build` still fetches the crates from crates.io, so a project set to
-build without network needs the dependencies vendored first (`rust2rpm`).
+The packages are **not signed**, so the repository file sets `gpgcheck=0`. That
+is as much trust as downloading a `.rpm` by hand from the same project — no
+more, and if that matters to you, build the package yourself with
+`packaging/build-rpm.sh`.
 
-`.github/workflows/copr.yml` submits a build when a release is published, so
-the repository and the repository people install from stay in step. It needs
-two one-time settings on the COPR side, using the Fedora account that owns the
-project:
+Removing it again:
 
 ```sh
-# once, as the account that will own the builds (creates the project and the
-# chroots; adjust the chroots to the Fedora releases you care about)
-copr-cli create ipp-duplexd --chroot fedora-43-x86_64 --chroot fedora-rawhide-x86_64
-copr-cli edit   ipp-duplexd --description "Manual duplex via a virtual IPP printer (i18n fork)"
+sudo dnf remove ipp-duplexd
+sudo rm /etc/yum.repos.d/ipp-duplexd.repo
 ```
 
-and one on the GitHub side: store the contents of `~/.config/copr` (the
-`[copr-cli]` block with `username`, `login`, `token`, `copr_url`) as the
-`COPR_CONFIG` repository secret. Without that secret the workflow says so and
-skips, instead of failing.
+`.github/workflows/dnf-repo.yml` does the work: build the RPM, index it with
+`createrepo_c`, then **install it from that index in a clean container** and
+check the installed files and both languages before anything is published to
+the `gh-pages` branch. A broken file list or index therefore fails the release
+instead of reaching users.
+
+A COPR project was the other option, and it is not set up: COPR needs a Fedora
+account, and it has no GitHub login. The pieces are in the repository
+([`.copr/Makefile`](.copr/Makefile) and
+[`.github/workflows/copr.yml`](.github/workflows/copr.yml)); with an account,
+`copr-cli create ipp-duplexd --chroot fedora-43-x86_64`, store `~/.config/copr`
+as the `COPR_CONFIG` secret, and `sudo dnf copr enable wraindrock/ipp-duplexd`
+becomes an alternative to the repository above.
 
 ## Setup
 
@@ -304,4 +312,4 @@ cargo test
 
 [i18n]: https://github.com/longbridge/rust-i18n
 [upstream]: https://github.com/SamiKalliomaki/ipp-duplexd
-[copr]: https://copr.fedorainfracloud.org/coprs/wraindrock/ipp-duplexd/
+[repo]: https://wraindrock.github.io/ipp-duplexd-fork/

@@ -50,7 +50,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build dependencies
-        run: dnf -y install cargo rust rpm-build make tar gzip qpdf && dnf -y clean all
+        run: dnf -y install cargo rust rpm-build make tar gzip qpdf createrepo_c && dnf -y clean all
 
       - uses: actions/checkout@v4
 
@@ -63,3 +63,16 @@ jobs:
         run: |
           make -f .copr/Makefile srpm outdir="$PWD/srpm"
           rpm -qpl srpm/*.src.rpm
+
+      # The GitHub Pages repository (dnf-repo.yml) is only as good as the
+      # index createrepo_c makes, so build it and install from it here too.
+      - name: Index the RPM and install it from that index
+        run: |
+          dir="$PWD/repo/x86_64"
+          mkdir -p "$dir"
+          cp packaging/*.rpm "$dir/"
+          createrepo_c --quiet "$dir"
+          dnf -y --repofrompath=ipp-duplexd,"file://$dir" \
+                 --setopt=ipp-duplexd.gpgcheck=0 install ipp-duplexd
+          rpm -q ipp-duplexd
+          ipp-duplexd --lang zh-CN 2>&1 | grep -q '必须指定 --printer'
