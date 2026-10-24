@@ -165,3 +165,36 @@ jobs:
           git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+  published:
+    name: Install from the published repository
+    needs: publish
+    runs-on: ubuntu-latest
+    container: fedora:${{ matrix.release }}
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ["43", "44", "rawhide"]
+    steps:
+      - name: Wait for GitHub Pages to serve it
+        run: |
+          url="https://wraindrock.github.io/ipp-duplexd-fork/fedora/${{ matrix.release }}/x86_64/repodata/repomd.xml"
+          for attempt in $(seq 1 30); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' -m 20 "$url" || true)"
+            case "$code" in
+              200) echo "$url is being served (attempt $attempt)"; exit 0 ;;
+            esac
+            echo "attempt $attempt: HTTP $code"
+            sleep 10
+          done
+          echo "GitHub Pages never served $url"
+          exit 1
+
+      - name: Install the way the README tells people to
+        run: |
+          curl -fsS -o /etc/yum.repos.d/ipp-duplexd.repo \
+            https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd.repo
+          cat /etc/yum.repos.d/ipp-duplexd.repo
+          dnf -y install ipp-duplexd
+          rpm -q ipp-duplexd
+          ipp-duplexd --lang zh-CN 2>&1 | grep -q '必须指定 --printer'
