@@ -44,7 +44,7 @@ srpm: check
 	             "$$work/$(distname).spec"; \
 	set -- "$(outdir)"/*.src.rpm; \
 	if [ "$$#" -ne 1 ]; then echo "expected exactly one SRPM in $(outdir), found $$#"; exit 1; fi; \
-	srpm="$$1"; contents="$$(rpm -qpl "$$srpm")"; \
+	srpm="$$1"; db="$$(mktemp -d)"; contents="$$(rpm --dbpath "$$db" -qpl "$$srpm")"; rmdir "$$db" 2>/dev/null || true; \
 	case "$$contents" in *"$(distname).tar.gz"*) ;; *) echo "$$srpm is missing $(distname).tar.gz"; exit 1;; esac; \
 	case "$$contents" in *"$(distname).spec"*) ;; *) echo "$$srpm is missing $(distname).spec"; exit 1;; esac; \
 	echo "$$srpm"

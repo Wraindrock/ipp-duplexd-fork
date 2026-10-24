@@ -98,6 +98,12 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %{_userunitdir}/ipp-duplexd-fork.service
 
 %changelog
+* Sat Oct 24 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.2.0-1
+- Renamed the package, both binaries, the systemd unit and the configuration
+  file to ipp-duplexd-fork, and added Obsoletes: ipp-duplexd so dnf replaces
+  the old package instead of installing a second copy.
+- Published an installable dnf repository on GitHub Pages, rebuilt on every
+  release.
 * Sat Oct 24 2026 Sami Kalliomäki <sami@kalliomaki.me> - 0.1.3-1
 - Initial RPM packaging.
 - English and Simplified Chinese messages (rust-i18n), compiled into the

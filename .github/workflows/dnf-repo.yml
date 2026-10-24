@@ -100,7 +100,7 @@ jobs:
             test -e "$f"
           done
           # Fedora keeps the docs in /usr/share/doc/ipp-duplexd-fork, older rpmbuilds
-          # in /usr/share/doc/ipp-duplexd-fork-0.1.3, so match on the prefix only.
+          # in a directory carrying the version (Fedora leaves it out), so match the prefix.
           case "$files" in
             *"/usr/share/doc/ipp-duplexd-fork"*"/README.md"*) ;;
             *) echo "no README in the package"; exit 1 ;;
