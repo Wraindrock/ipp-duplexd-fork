@@ -176,19 +176,54 @@ jobs:
       matrix:
         release: ["43", "44", "rawhide"]
     steps:
-      - name: Wait for GitHub Pages to serve it
+      - name: Wait until the served repository is complete
+        shell: python
+        env:
+          RELEASE: ${{ matrix.release }}
         run: |
-          url="https://wraindrock.github.io/ipp-duplexd-fork/fedora/${{ matrix.release }}/x86_64/repodata/repomd.xml"
-          for attempt in $(seq 1 30); do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' -m 20 "$url" || true)"
-            case "$code" in
-              200) echo "$url is being served (attempt $attempt)"; exit 0 ;;
-            esac
-            echo "attempt $attempt: HTTP $code"
-            sleep 10
-          done
-          echo "GitHub Pages never served $url"
-          exit 1
+          import gzip, hashlib, os, time
+          import urllib.request
+          import xml.etree.ElementTree as ET
+
+          base = "https://wraindrock.github.io/ipp-duplexd-fork/fedora/" + os.environ["RELEASE"] + "/x86_64"
+          repofile = "https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd-fork.repo"
+          ns = {"r": "http://linux.duke.edu/metadata/repo",
+                "c": "http://linux.duke.edu/metadata/common"}
+
+          def fetch(url):
+              with urllib.request.urlopen(url, timeout=60) as response:
+                  return response.read()
+
+          def problem():
+              """Return why the published repository is not usable yet, or None."""
+              if b"ipp-duplexd-fork" not in fetch(repofile):
+                  return "the repository file does not name the package yet"
+              repomd = ET.fromstring(fetch(base + "/repodata/repomd.xml"))
+              primary = repomd.find("r:data[@type='primary']/r:location", ns).get("href")
+              index = ET.fromstring(gzip.decompress(fetch(base + "/" + primary)))
+              packages = index.findall("c:package", ns)
+              if not packages:
+                  return "the index lists no package"
+              for package in packages:
+                  location = package.find("c:location", ns).get("href")
+                  wanted = package.find("c:checksum", ns).text
+                  body = fetch(base + "/" + location)
+                  if hashlib.sha256(body).hexdigest() != wanted:
+                      return location + " does not match its checksum yet"
+              return None
+
+          for attempt in range(1, 31):
+              try:
+                  why = problem()
+              except Exception as error:
+                  why = str(error)
+              if why is None:
+                  print("the published repository is complete, and its package matches its checksum")
+                  break
+              print("attempt %d: %s" % (attempt, why))
+              time.sleep(10)
+          else:
+              raise SystemExit("the published repository never became complete")
 
       - name: Install the way the README tells people to
         run: |
