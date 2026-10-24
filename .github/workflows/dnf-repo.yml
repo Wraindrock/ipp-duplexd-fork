@@ -14,6 +14,10 @@ name: dnf repository
 # versions stay on the GitHub releases page.
 
 on:
+  # Tags rebuild the repository: a release created by the release workflow
+  # with GITHUB_TOKEN does not trigger a `release` event.
+  push:
+    tags: ['v*']
   release:
     types: [published]
   workflow_dispatch:
