@@ -24,11 +24,21 @@ app --> CUPS queue (driverless) --> ipp-duplexd (127.0.0.1:6632)
 ```sh
 ./packaging/build-arch.sh   # Arch Linux: packaging/arch/ipp-duplexd-*.pkg.tar.zst  (needs makepkg)
 ./packaging/build-deb.sh    # Debian/Ubuntu: packaging/ipp-duplexd_*.deb            (needs dpkg-deb)
+./packaging/build-rpm.sh    # Fedora/RHEL/openSUSE: packaging/ipp-duplexd-*.rpm      (needs rpm-build)
 ```
 
-Both install `/usr/bin/ipp-duplexd`, the `ipp-duplexd-setup` helper, a systemd
-**user** unit, and docs, and depend on `qpdf`. Translations are compiled into
-the binaries, so there are no locale files to install or lose.
+All three install `/usr/bin/ipp-duplexd`, the `ipp-duplexd-setup` helper, a
+systemd **user** unit, and docs, and depend on `qpdf`. Translations are
+compiled into the binaries, so there are no locale files to install or lose.
+
+The RPM spec is [packaging/rpm/ipp-duplexd.spec](packaging/rpm/ipp-duplexd.spec);
+it takes the version from `Cargo.toml` (passed in by the build script) and
+installs the docs where Fedora expects them (`/usr/share/doc/ipp-duplexd-<version>`).
+It fetches the crates while building, so a submission to a distro builder that
+has no network (Fedora Koji, OBS) needs the dependencies vendored first, e.g.
+with `rust2rpm`; `build-rpm.sh` also verifies the finished package (both
+binaries, the unit, the license, the `qpdf` dependency, and that no locale data
+was installed) and deletes it rather than leave a broken artifact.
 
 ## Setup
 

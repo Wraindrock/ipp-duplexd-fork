@@ -2,6 +2,7 @@
 
 # package build outputs
 /packaging/*.deb
+/packaging/*.rpm
 /packaging/arch/*.pkg.tar.zst
 /packaging/arch/*.tar.gz
 /packaging/arch/src/

@@ -1,6 +1,8 @@
 [Unit]
 Description=Manual duplex virtual IPP printer
-Documentation=file:/usr/share/doc/ipp-duplexd/README.md
+# the packaged README lives in a distro-specific directory (Fedora uses an
+# unversioned name, Debian/Arch a fixed one), so point at the project instead
+Documentation=https://github.com/SamiKalliomaki/ipp-duplexd
 After=network.target
 # the flip dialog needs the session's DISPLAY/WAYLAND_DISPLAY, which the
 # desktop session imports into the user manager on its way to this target

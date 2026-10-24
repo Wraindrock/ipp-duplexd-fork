@@ -1,7 +1,7 @@
 name: Release
 
-# Build the Arch and Debian packages with the same scripts used locally and
-# attach them to a GitHub release for the pushed tag.
+# Build the Arch, Debian and RPM packages with the same scripts used locally
+# and attach them to a GitHub release for the pushed tag.
 on:
   push:
     tags: ['v*']
@@ -68,9 +68,29 @@ jobs:
             !packaging/arch/ipp-duplexd-debug-*.pkg.tar.zst
           if-no-files-found: error
 
+  rpm:
+    name: RPM package
+    needs: version
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build dependencies
+        run: dnf -y install cargo rust rpm-build tar gzip qpdf && dnf -y clean all
+
+      - uses: actions/checkout@v4
+
+      - name: Build .rpm
+        run: ./packaging/build-rpm.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: packaging/*.rpm
+          if-no-files-found: error
+
   release:
     name: GitHub release
-    needs: [deb, arch]
+    needs: [deb, arch, rpm]
     # workflow_dispatch runs stop after the build artifacts; only tags release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest

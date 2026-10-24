@@ -41,3 +41,18 @@ jobs:
 
       - name: Test
         run: cargo test
+
+  # The RPM spec is only exercised by a real rpmbuild; build it here so a
+  # broken spec or file list fails on the pull request, not at release time.
+  rpm:
+    name: RPM package
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build dependencies
+        run: dnf -y install cargo rust rpm-build tar gzip qpdf && dnf -y clean all
+
+      - uses: actions/checkout@v4
+
+      - name: Build and verify the package
+        run: ./packaging/build-rpm.sh
