@@ -9,6 +9,13 @@
 # The tarball name carries no version, so it can never disagree with the
 # version that is passed in (the same trick as packaging/build-arch.sh).
 #
+# COPR builds this fork from an SRPM instead: .copr/Makefile tars a *versioned*
+# tarball (ipp-duplexd-<version>.tar.gz) and bakes the version below into a copy
+# of this spec, because an SRPM is rebuilt later on a machine that has no
+# working tree and no --define to pass. Keep the anchor lines it rewrites (the
+# version on the Version: line, the guard below, Source0 and %setup) exactly one
+# each; the Makefile asserts that and fails loudly if this spec drifts.
+#
 # This is a working-tree build: %build fetches the crates from the network, on
 # top of the --locked lockfile. A submission to a distribution that builds
 # offline (Fedora Koji, OBS) has to vendor the dependencies first, e.g. with

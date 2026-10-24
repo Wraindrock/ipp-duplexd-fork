@@ -1,5 +1,9 @@
 # ipp-duplexd — manual duplex printing via a virtual IPP printer
 
+> This is a fork of [ipp-duplexd][upstream], adding i18n and a GUI manager.
+> Install from [COPR][copr] on Fedora and its derivatives, or build a
+> package locally with the scripts in [Packages](#packages).
+
 A small Rust daemon (one dependency, [rust-i18n][i18n]) that turns any
 simplex printer into a manual duplex printer. It is itself an IPP printer, listening on
 `127.0.0.1` only. Print to it; it prints the **odd pages** on the real
@@ -39,6 +43,45 @@ has no network (Fedora Koji, OBS) needs the dependencies vendored first, e.g.
 with `rust2rpm`; `build-rpm.sh` also verifies the finished package (both
 binaries, the unit, the license, the `qpdf` dependency, and that no locale data
 was installed) and deletes it rather than leave a broken artifact.
+
+## Installing from COPR (Fedora, RHEL, openSUSE)
+
+The fork is published as an
+[COPR][copr] repository, so Fedora and its derivatives get installs and
+updates through `dnf`:
+
+```sh
+sudo dnf copr enable wraindrock/ipp-duplexd
+sudo dnf install ipp-duplexd
+sudo dnf upgrade          # later: picks up new builds
+```
+
+openSUSE has the equivalent `copr` plugin for `zypper`, or use the `.rpm`
+from the release page.
+
+COPR builds from `.copr/Makefile` (its "custom" source method): the Makefile
+turns the checkout into a self-contained SRPM — a versioned tarball holding the
+same file list as the distro scripts plus a copy of the spec with the version
+from `Cargo.toml` baked in — and COPR rebuilds that in each enabled chroot.
+The spec's `%build` still fetches the crates from crates.io, so a project set to
+build without network needs the dependencies vendored first (`rust2rpm`).
+
+`.github/workflows/copr.yml` submits a build when a release is published, so
+the repository and the repository people install from stay in step. It needs
+two one-time settings on the COPR side, using the Fedora account that owns the
+project:
+
+```sh
+# once, as the account that will own the builds (creates the project and the
+# chroots; adjust the chroots to the Fedora releases you care about)
+copr-cli create ipp-duplexd --chroot fedora-43-x86_64 --chroot fedora-rawhide-x86_64
+copr-cli edit   ipp-duplexd --description "Manual duplex via a virtual IPP printer (i18n fork)"
+```
+
+and one on the GitHub side: store the contents of `~/.config/copr` (the
+`[copr-cli]` block with `username`, `login`, `token`, `copr_url`) as the
+`COPR_CONFIG` repository secret. Without that secret the workflow says so and
+skips, instead of failing.
 
 ## Setup
 
@@ -260,3 +303,5 @@ cargo test
   `Accept-Language`.
 
 [i18n]: https://github.com/longbridge/rust-i18n
+[upstream]: https://github.com/SamiKalliomaki/ipp-duplexd
+[copr]: https://copr.fedorainfracloud.org/coprs/wraindrock/ipp-duplexd/

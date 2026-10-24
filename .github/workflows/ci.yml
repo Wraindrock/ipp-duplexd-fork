@@ -50,9 +50,16 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build dependencies
-        run: dnf -y install cargo rust rpm-build tar gzip qpdf && dnf -y clean all
+        run: dnf -y install cargo rust rpm-build make tar gzip qpdf && dnf -y clean all
 
       - uses: actions/checkout@v4
 
       - name: Build and verify the package
         run: ./packaging/build-rpm.sh
+
+      # COPR builds from the SRPM that .copr/Makefile produces, so keep that
+      # path working on every pull request too (no compiler needed).
+      - name: Build the COPR SRPM
+        run: |
+          make -f .copr/Makefile srpm outdir="$PWD/srpm"
+          rpm -qpl srpm/*.src.rpm

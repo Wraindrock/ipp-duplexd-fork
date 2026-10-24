@@ -1,0 +1,60 @@
+name: COPR
+
+# Submit the build that `dnf copr enable` users install. COPR itself does the
+# actual package build (from the SRPM .copr/Makefile produces); this workflow
+# only triggers it, so the repository and the COPR project cannot drift apart.
+#
+# Needs, once:
+#   - a COPR project owned by the Fedora account whose ~/.config/copr is stored
+#     as the COPR_CONFIG secret (see README, "Installing from COPR")
+#   - optionally the repository variable COPR_PROJECT to override the project
+# Without the secret the job reports that it skipped instead of failing.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  copr:
+    name: Build in COPR
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    env:
+      COPR_PROJECT: ${{ vars.COPR_PROJECT || 'wraindrock/ipp-duplexd' }}
+      COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+    steps:
+      - name: Check whether COPR is configured
+        id: setup
+        run: |
+          if [ -n "$COPR_CONFIG" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.setup.outputs.ready == 'true'
+
+      - name: Install the COPR client
+        if: steps.setup.outputs.ready == 'true'
+        run: dnf -y install copr-cli make rpm-build tar gzip && dnf -y clean all
+
+      - name: Turn the checkout into an SRPM
+        if: steps.setup.outputs.ready == 'true'
+        run: make -f .copr/Makefile srpm outdir="$PWD/srpm"
+
+      - name: Submit to COPR and wait for the result
+        if: steps.setup.outputs.ready == 'true'
+        run: |
+          mkdir -p ~/.config
+          printf '%s\n' "$COPR_CONFIG" > ~/.config/copr
+          chmod 600 ~/.config/copr
+          srpm="$(echo srpm/*.src.rpm)"
+          echo "submitting $srpm to $COPR_PROJECT"
+          copr-cli build "$COPR_PROJECT" "$srpm"
+
+      - name: Explain the skip
+        if: steps.setup.outputs.ready != 'true'
+        run: |
+          echo "::notice::No COPR_CONFIG secret, so nothing was submitted to COPR."
