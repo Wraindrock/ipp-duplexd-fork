@@ -62,10 +62,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: arch
-          # not the auto-generated ipp-duplexd-debug split package
+          # not the auto-generated ipp-duplexd-fork-debug split package
           path: |
-            packaging/arch/ipp-duplexd-*.pkg.tar.zst
-            !packaging/arch/ipp-duplexd-debug-*.pkg.tar.zst
+            packaging/arch/ipp-duplexd-fork-*.pkg.tar.zst
+            !packaging/arch/ipp-duplexd-fork-debug-*.pkg.tar.zst
           if-no-files-found: error
 
   rpm:
@@ -108,6 +108,6 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "ipp-duplexd $GITHUB_REF_NAME" \
+            --title "ipp-duplexd-fork $GITHUB_REF_NAME" \
             --generate-notes \
             dist/*

@@ -1,4 +1,4 @@
-//! ipp-duplexd - a virtual IPP printer (loopback only) that performs manual
+//! ipp-duplexd-fork - a virtual IPP printer (loopback only) that performs manual
 //! duplex printing on a real IPP printer.
 //!
 //! Jobs printed with sides=two-sided-* (the advertised default) are split
@@ -12,8 +12,8 @@
 //! any driver work. Printer attributes are proxied from the real printer,
 //! so the virtual printer advertises the real hardware's capabilities.
 
-use ipp_duplexd::ipp::{self, Attr, Group, Msg, PrinterUri};
-use ipp_duplexd::l10n;
+use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg, PrinterUri};
+use ipp_duplexd_fork::l10n;
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -110,27 +110,27 @@ fn lang() -> &'static str {
 }
 
 fn log(msg: &str) {
-    eprintln!("ipp-duplexd: {msg}");
+    eprintln!("ipp-duplexd-fork: {msg}");
 }
 
 fn main() {
     let cfg = match parse_args() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("ipp-duplexd: {e}");
+            eprintln!("ipp-duplexd-fork: {e}");
             eprintln!("{}", l10n::text(lang(), "daemon.usage"));
             std::process::exit(2);
         }
     };
     if Command::new("qpdf").arg("--version").output().is_err() {
-        eprintln!("ipp-duplexd: {}", t!("daemon.err.no_qpdf"));
+        eprintln!("ipp-duplexd-fork: {}", t!("daemon.err.no_qpdf"));
         std::process::exit(1);
     }
     let listener = match TcpListener::bind(&cfg.listen) {
         Ok(l) => l,
         Err(e) => {
             eprintln!(
-                "ipp-duplexd: {}",
+                "ipp-duplexd-fork: {}",
                 t!(
                     "daemon.err.bind",
                     addr = cfg.listen.as_str(),
@@ -774,7 +774,7 @@ fn fallback_printer_attrs() -> Vec<Attr> {
         Attr::str(
             ipp::T_TEXT,
             "printer-make-and-model",
-            "ipp-duplexd virtual printer",
+            "ipp-duplexd-fork virtual printer",
         ),
     ]
 }
@@ -1068,7 +1068,7 @@ fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::
             vec![
                 "--question",
                 "--title",
-                "ipp-duplexd",
+                "ipp-duplexd-fork",
                 "--text",
                 &text,
                 "--ok-label",
@@ -1077,7 +1077,10 @@ fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::
                 &not_yet,
             ],
         ),
-        ("kdialog", vec!["--title", "ipp-duplexd", "--yesno", &text]),
+        (
+            "kdialog",
+            vec!["--title", "ipp-duplexd-fork", "--yesno", &text],
+        ),
         ("xmessage", vec!["-center", "-buttons", &buttons, &text]),
     ];
     let mut child = None;
@@ -1138,8 +1141,9 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
         J_PROCESSING,
         JobMessage::key("daemon.job.preparing"),
     );
-    // pid in the name: two ipp-duplexd instances both have a job 1
-    let dir = std::env::temp_dir().join(format!("ipp-duplexd-{}-job-{id}", std::process::id()));
+    // pid in the name: two ipp-duplexd-fork instances both have a job 1
+    let dir =
+        std::env::temp_dir().join(format!("ipp-duplexd-fork-{}-job-{id}", std::process::id()));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let _cleanup = Cleanup(dir.clone());
     let p = |n: &str| dir.join(n).to_string_lossy().into_owned();

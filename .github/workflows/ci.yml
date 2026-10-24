@@ -57,6 +57,35 @@ jobs:
       - name: Build and verify the package
         run: ./packaging/build-rpm.sh
 
+      # The package was renamed, so an installed ipp-duplexd has to go away when
+      # the fork is installed; build a stand-in for the old package to prove it.
+      - name: Check that it replaces an installed ipp-duplexd
+        run: |
+          work="$(mktemp -d)"
+          cat > "$work/old.spec" <<'SPEC'
+          Name:           ipp-duplexd
+          Version:        0.1.3
+          Release:        1
+          Summary:        the package before the rename
+          License:        MIT
+          BuildArch:      noarch
+          %description
+          Stand-in for the package this fork used to publish.
+          %install
+          mkdir -p %{buildroot}
+          %files
+          %changelog
+          SPEC
+          rpmbuild -bb --nodeps --define "_topdir $work/top" \
+                   --define "_tmppath $work/tmp" "$work/old.spec" >/dev/null
+          dnf -y install "$work"/top/RPMS/noarch/ipp-duplexd-0.1.3-1.noarch.rpm
+          dnf -y install ./packaging/ipp-duplexd-fork-*.rpm
+          if rpm -q ipp-duplexd >/dev/null 2>&1; then
+            echo "ipp-duplexd is still installed next to ipp-duplexd-fork"
+            exit 1
+          fi
+          rpm -q ipp-duplexd-fork
+
       # COPR builds from the SRPM that .copr/Makefile produces, so keep that
       # path working on every pull request too (no compiler needed).
       - name: Build the COPR SRPM
@@ -72,7 +101,7 @@ jobs:
           mkdir -p "$dir"
           cp packaging/*.rpm "$dir/"
           createrepo_c --quiet "$dir"
-          dnf -y --repofrompath=ipp-duplexd,"file://$dir" \
-                 --setopt=ipp-duplexd.gpgcheck=0 install ipp-duplexd
-          rpm -q ipp-duplexd
-          ipp-duplexd --lang zh-CN 2>&1 | grep -q '必须指定 --printer'
+          dnf -y --repofrompath=ipp-duplexd-fork,"file://$dir" \
+                 --setopt=ipp-duplexd-fork.gpgcheck=0 install ipp-duplexd-fork
+          rpm -q ipp-duplexd-fork
+          ipp-duplexd-fork --lang zh-CN 2>&1 | grep -q '必须指定 --printer'

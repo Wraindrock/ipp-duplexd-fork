@@ -33,7 +33,7 @@ fi
 
 echo "==> bumping version to $ver"
 sed -i "s/^version = \".*\"/version = \"$ver\"/" Cargo.toml
-cargo update --offline -p ipp-duplexd
+cargo update --offline -p ipp-duplexd-fork
 
 echo "==> running the CI checks"
 # same list as .github/workflows/ci.yml, warnings denied like there
@@ -59,4 +59,4 @@ jj git push --bookmark main --tag "v$ver"
 
 echo
 echo "done — the Release workflow is building the packages:"
-echo "  https://github.com/SamiKalliomaki/ipp-duplexd/actions"
+echo "  https://github.com/Wraindrock/ipp-duplexd-fork/actions"

@@ -20,11 +20,11 @@
 # Every rewrite is asserted to hit exactly one line: if the spec changes shape
 # this target fails instead of quietly shipping a wrong tarball name.
 
-specfile := packaging/rpm/ipp-duplexd.spec
+specfile := packaging/rpm/ipp-duplexd-fork.spec
 version  := $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml)
-distname := ipp-duplexd-$(version)
+distname := ipp-duplexd-fork-$(version)
 sources  := Cargo.toml Cargo.lock src locales README.md LICENSE \
-            packaging/ipp-duplexd.service packaging/ipp-duplexd.conf.example
+            packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
 outdir   := $(abspath $(outdir))
 
 .PHONY: srpm check
@@ -36,7 +36,7 @@ srpm: check
 	sed -e 's|%{ipp_version}|$(version)|g' \
 	    -e '/^%{!?ipp_version:/d' \
 	    -e 's|^Source0:.*|Source0:        $(distname).tar.gz|' \
-	    -e 's|^%setup -q -n ipp-duplexd$$|%setup -q -n $(distname)|' \
+	    -e 's|^%setup -q -n ipp-duplexd-fork$$|%setup -q -n $(distname)|' \
 	    "$(specfile)" > "$$work/$(distname).spec"; \
 	rpmbuild -bs --define "_topdir $$work/rpmbuild" \
 	             --define "_sourcedir $$work" \
@@ -58,5 +58,5 @@ check:
 	@test "$$(grep -c '%{ipp_version}' $(specfile))" = 1 || { echo "spec: %{ipp_version} must appear once"; exit 1; }
 	@test "$$(grep -c '^%{!?ipp_version:' $(specfile))" = 1 || { echo "spec: the ipp_version guard must appear once"; exit 1; }
 	@test "$$(grep -c '^Source0:' $(specfile))" = 1 || { echo "spec: Source0 must appear once"; exit 1; }
-	@test "$$(grep -c '^%setup -q -n ipp-duplexd$$' $(specfile))" = 1 || { echo "spec: '%setup -q -n ipp-duplexd' must appear once"; exit 1; }
-	@echo "ipp-duplexd $(version) -> $(outdir)"
+	@test "$$(grep -c '^%setup -q -n ipp-duplexd-fork$$' $(specfile))" = 1 || { echo "spec: '%setup -q -n ipp-duplexd-fork' must appear once"; exit 1; }
+	@echo "ipp-duplexd-fork $(version) -> $(outdir)"

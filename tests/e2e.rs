@@ -1,4 +1,4 @@
-//! End-to-end tests for ipp-duplexd: a mock IPP printer stands in for the real
+//! End-to-end tests for ipp-duplexd-fork: a mock IPP printer stands in for the real
 //! printer and the tests play CUPS as the IPP client. Requires qpdf.
 //! Every test gets its own daemon, mock, and ports, so they run in parallel.
 //!
@@ -7,7 +7,7 @@
 //!
 //! Run with: cargo test -- --nocapture
 
-use ipp_duplexd::ipp::{self, Attr, Group, Msg};
+use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -57,7 +57,10 @@ struct TestDir(PathBuf);
 
 impl TestDir {
     fn new(name: &str) -> TestDir {
-        let d = std::env::temp_dir().join(format!("ipp-duplexd-e2e-{}-{name}", std::process::id()));
+        let d = std::env::temp_dir().join(format!(
+            "ipp-duplexd-fork-e2e-{}-{name}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&d).unwrap();
         TestDir(d)
     }
@@ -331,7 +334,7 @@ impl Drop for Daemon {
     }
 }
 
-/// Starts ipp-duplexd on 127.0.0.1:0 (kernel-assigned, so parallel tests can
+/// Starts ipp-duplexd-fork on 127.0.0.1:0 (kernel-assigned, so parallel tests can
 /// never collide) and reads the actual port back from its log line.
 fn start_daemon(
     mock_port: u16,
@@ -339,7 +342,7 @@ fn start_daemon(
     env_path: Option<&str>,
     log: &Path,
 ) -> (Daemon, u16) {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-fork"));
     cmd.args([
         "--printer",
         &format!("ipp://127.0.0.1:{mock_port}/print"),
@@ -351,12 +354,12 @@ fn start_daemon(
     .args(extra)
     // the assertions below are about the English protocol text; do not let the
     // developer's locale leak into the daemon under test
-    .env("IPP_DUPLEXD_LANG", "en")
+    .env("IPP_DUPLEXD_FORK_LANG", "en")
     .stderr(Stdio::from(std::fs::File::create(log).unwrap()));
     if let Some(p) = env_path {
         cmd.env("PATH", p);
     }
-    let daemon = Daemon(cmd.spawn().expect("failed to start ipp-duplexd"));
+    let daemon = Daemon(cmd.spawn().expect("failed to start ipp-duplexd-fork"));
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         let text = std::fs::read_to_string(log).unwrap_or_default();
@@ -366,12 +369,12 @@ fn start_daemon(
                 .take_while(|c| c.is_ascii_digit())
                 .collect::<String>()
                 .parse()
-                .expect("bad port in ipp-duplexd log");
+                .expect("bad port in ipp-duplexd-fork log");
             return (daemon, port);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    panic!("ipp-duplexd did not report its listen port; log: {log:?}");
+    panic!("ipp-duplexd-fork did not report its listen port; log: {log:?}");
 }
 
 fn attr_strs(msg: &Msg, name: &str) -> Vec<String> {
@@ -387,7 +390,7 @@ fn attr_strs(msg: &Msg, name: &str) -> Vec<String> {
 
 // ------------------------------------------------------------------- tests
 
-/// One fully wired instance: temp dir, mock printer, ipp-duplexd on fresh ports.
+/// One fully wired instance: temp dir, mock printer, ipp-duplexd-fork on fresh ports.
 struct Setup {
     dir: TestDir,
     received: Arc<Mutex<Vec<ReceivedJob>>>,
@@ -398,7 +401,12 @@ struct Setup {
 fn setup(name: &str, extra: &[&str], env_path: Option<&str>) -> Setup {
     let dir = TestDir::new(name);
     let (mock_port, received) = start_mock();
-    let (daemon, port) = start_daemon(mock_port, extra, env_path, &dir.path("ipp-duplexd.log"));
+    let (daemon, port) = start_daemon(
+        mock_port,
+        extra,
+        env_path,
+        &dir.path("ipp-duplexd-fork.log"),
+    );
     Setup {
         dir,
         received,
@@ -565,7 +573,7 @@ fn gui_dialog_continues_job() {
         assert_eq!(widths(&r[0].doc, &t.dir.0), vec![601, 603, 605]);
         assert_eq!(widths(&r[1].doc, &t.dir.0), vec![612, 604, 602]);
     }
-    let log = std::fs::read_to_string(t.dir.path("ipp-duplexd.log")).unwrap();
+    let log = std::fs::read_to_string(t.dir.path("ipp-duplexd-fork.log")).unwrap();
     assert!(log.contains("flip dialog opened via zenity"), "{log}");
 }
 
@@ -574,7 +582,7 @@ fn offline_printer_is_mirrored() {
     // unreachable real printer -> stopped + offline-report, but still spooling.
     // Port 1 needs root to bind, so nothing can ever listen there.
     let dir = TestDir::new("offline");
-    let (_d, port) = start_daemon(1, &["--no-gui"], None, &dir.path("ipp-duplexd.log"));
+    let (_d, port) = start_daemon(1, &["--no-gui"], None, &dir.path("ipp-duplexd-fork.log"));
     let attrs = get_printer_attrs(port);
     assert_eq!(
         attrs.find("printer-state").and_then(|a| a.first_int()),

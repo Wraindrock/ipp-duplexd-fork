@@ -1,12 +1,12 @@
-//! Interactive setup for ipp-duplexd: pick the real printer, write the config,
+//! Interactive setup for ipp-duplexd-fork: pick the real printer, write the config,
 //! enable the systemd user service, and register the virtual printer as a
 //! driverless CUPS queue.
 //!
 //! Every step can also be skipped or overridden with flags, and --yes runs
 //! non-interactively with defaults.
 
-use ipp_duplexd::ipp::{self, Attr, Group, Msg};
-use ipp_duplexd::l10n;
+use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg};
+use ipp_duplexd_fork::l10n;
 use rust_i18n::t;
 use std::io::{self, Write};
 use std::net::TcpStream;
@@ -292,14 +292,14 @@ fn home() -> PathBuf {
 fn find_duplexd() -> Option<PathBuf> {
     // next to this binary first (cargo target dir, or /usr/bin for packages)
     if let Ok(me) = std::env::current_exe() {
-        let sibling = me.with_file_name("ipp-duplexd");
+        let sibling = me.with_file_name("ipp-duplexd-fork");
         if sibling.is_file() {
             return Some(sibling);
         }
     }
     let path = std::env::var("PATH").unwrap_or_default();
     path.split(':')
-        .map(|d| Path::new(d).join("ipp-duplexd"))
+        .map(|d| Path::new(d).join("ipp-duplexd-fork"))
         .find(|p| p.is_file())
 }
 
@@ -346,7 +346,7 @@ fn cups_queues() -> Vec<(String, String)> {
 }
 
 fn choose_printer() -> String {
-    // skip queues on loopback:6632 — that would be ipp-duplexd forwarding to itself
+    // skip queues on loopback:6632 — that would be ipp-duplexd-fork forwarding to itself
     let queues: Vec<_> = cups_queues()
         .into_iter()
         .filter(|(_, uri)| !uri.contains("127.0.0.1:6632") && !uri.contains("localhost:6632"))
@@ -391,8 +391,8 @@ fn queue_default(printer_uri: &str) -> String {
 // -------------------------------------------------------------- config file
 
 fn write_config(daemon_args: &str) {
-    let path = home().join(".config/ipp-duplexd.conf");
-    let line = format!("IPP_DUPLEXD_ARGS={daemon_args}\n");
+    let path = home().join(".config/ipp-duplexd-fork.conf");
+    let line = format!("IPP_DUPLEXD_FORK_ARGS={daemon_args}\n");
     if let Ok(existing) = std::fs::read_to_string(&path) {
         if existing == line {
             println!("{}", t!("setup.config.up_to_date", path = path.display()));
@@ -434,9 +434,9 @@ fn write_config(daemon_args: &str) {
 /// Enable + (re)start the user service; returns true if it should be running.
 fn setup_service(daemon_bin: &Path, gui: bool) -> bool {
     // package-installed unit, or write one ourselves
-    let packaged = Path::new("/usr/lib/systemd/user/ipp-duplexd.service").is_file()
-        || Path::new("/lib/systemd/user/ipp-duplexd.service").is_file();
-    let user_unit = home().join(".config/systemd/user/ipp-duplexd.service");
+    let packaged = Path::new("/usr/lib/systemd/user/ipp-duplexd-fork.service").is_file()
+        || Path::new("/lib/systemd/user/ipp-duplexd-fork.service").is_file();
+    let user_unit = home().join(".config/systemd/user/ipp-duplexd-fork.service");
     if !packaged && !user_unit.is_file() {
         // With the dialog, bind to the graphical session: it starts once the
         // display variables exist and stops when they go away. Without it,
@@ -455,8 +455,8 @@ fn setup_service(daemon_bin: &Path, gui: bool) -> bool {
         let unit = format!(
             "[Unit]\nDescription=Manual duplex virtual IPP printer\nAfter=network.target\n\
              {target}\n\
-             [Service]\nEnvironmentFile=%h/.config/ipp-duplexd.conf\n\
-             ExecStart={} $IPP_DUPLEXD_ARGS\nRestart=on-failure\nRestartSec=5\n\n\
+             [Service]\nEnvironmentFile=%h/.config/ipp-duplexd-fork.conf\n\
+             ExecStart={} $IPP_DUPLEXD_FORK_ARGS\nRestart=on-failure\nRestartSec=5\n\n\
              [Install]\nWantedBy={wanted_by}\n",
             daemon_bin.display()
         );
@@ -507,7 +507,10 @@ fn setup_service(daemon_bin: &Path, gui: bool) -> bool {
             }
         }
     }
-    match run("systemctl", &["--user", "enable", "--now", "ipp-duplexd"]) {
+    match run(
+        "systemctl",
+        &["--user", "enable", "--now", "ipp-duplexd-fork"],
+    ) {
         Ok(_) => {}
         Err(e) => {
             println!("{}", t!("setup.service.enable_failed", err = e));
@@ -519,7 +522,7 @@ fn setup_service(daemon_bin: &Path, gui: bool) -> bool {
         }
     }
     // restart in case it was already running with the old config
-    let _ = run("systemctl", &["--user", "restart", "ipp-duplexd"]);
+    let _ = run("systemctl", &["--user", "restart", "ipp-duplexd-fork"]);
     println!("{}", t!("setup.service.enabled"));
     true
 }

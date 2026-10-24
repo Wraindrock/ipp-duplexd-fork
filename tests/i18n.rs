@@ -4,8 +4,8 @@
 //!
 //! The catalog tests need no daemon; the behavior tests run the real binaries.
 
-use ipp_duplexd::ipp::{self, Attr, Group, Msg};
-use ipp_duplexd::l10n;
+use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg};
+use ipp_duplexd_fork::l10n;
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -114,14 +114,14 @@ fn looks_like_a_key(piece: &str) -> bool {
 // --------------------------------------------------------- the daemon binary
 
 fn duplexd(args: &[&str], env: &[(&str, &str)]) -> Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-fork"));
     cmd.args(args)
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default());
     for (k, v) in env {
         cmd.env(k, v);
     }
-    cmd.output().expect("failed to run ipp-duplexd")
+    cmd.output().expect("failed to run ipp-duplexd-fork")
 }
 
 fn stderr(out: &Output) -> String {
@@ -130,24 +130,24 @@ fn stderr(out: &Output) -> String {
 
 #[test]
 fn the_usage_text_speaks_the_requested_language() {
-    let out = duplexd(&[], &[("IPP_DUPLEXD_LANG", "en")]);
+    let out = duplexd(&[], &[("IPP_DUPLEXD_FORK_LANG", "en")]);
     assert_eq!(out.status.code(), Some(2));
     let en = stderr(&out);
     assert!(en.contains("--printer is required"), "{en}");
-    assert!(en.contains("usage: ipp-duplexd"), "{en}");
+    assert!(en.contains("usage: ipp-duplexd-fork"), "{en}");
 
-    let out = duplexd(&["--lang", "zh-CN"], &[("IPP_DUPLEXD_LANG", "en")]);
+    let out = duplexd(&["--lang", "zh-CN"], &[("IPP_DUPLEXD_FORK_LANG", "en")]);
     assert_eq!(out.status.code(), Some(2));
     let zh = stderr(&out);
     assert!(zh.contains("必须指定 --printer"), "{zh}");
     assert!(zh.contains("用法："), "{zh}");
-    assert!(!zh.contains("usage: ipp-duplexd"), "{zh}");
+    assert!(!zh.contains("usage: ipp-duplexd-fork"), "{zh}");
 }
 
 #[test]
 fn the_environment_picks_the_language_too() {
     for tag in ["zh_CN.UTF-8", "zh-TW", "zh-Hant"] {
-        let out = duplexd(&[], &[("IPP_DUPLEXD_LANG", tag)]);
+        let out = duplexd(&[], &[("IPP_DUPLEXD_FORK_LANG", tag)]);
         assert_eq!(out.status.code(), Some(2));
         assert!(
             stderr(&out).contains("必须指定 --printer"),
@@ -155,14 +155,17 @@ fn the_environment_picks_the_language_too() {
             stderr(&out)
         );
     }
-    // IPP_DUPLEXD_LANG wins over the conventional variables
-    let out = duplexd(&[], &[("IPP_DUPLEXD_LANG", "en"), ("LANG", "zh_CN.UTF-8")]);
+    // IPP_DUPLEXD_FORK_LANG wins over the conventional variables
+    let out = duplexd(
+        &[],
+        &[("IPP_DUPLEXD_FORK_LANG", "en"), ("LANG", "zh_CN.UTF-8")],
+    );
     assert!(stderr(&out).contains("--printer is required"));
 }
 
 #[test]
 fn an_unknown_language_is_rejected_with_the_list_of_known_ones() {
-    let out = duplexd(&["--lang", "de-DE"], &[("IPP_DUPLEXD_LANG", "en")]);
+    let out = duplexd(&["--lang", "de-DE"], &[("IPP_DUPLEXD_FORK_LANG", "en")]);
     assert_eq!(out.status.code(), Some(2));
     let err = stderr(&out);
     assert!(err.contains("unsupported language 'de-DE'"), "{err}");
@@ -215,26 +218,30 @@ fn port_in_log(text: &str) -> Option<u16> {
 
 #[test]
 fn the_port_is_found_in_either_language() {
-    let en = "ipp-duplexd: listening on 127.0.0.1:41234 as printer 'x', \
+    let en = "ipp-duplexd-fork: listening on 127.0.0.1:41234 as printer 'x', \
               forwarding to ipp://127.0.0.1:9/print";
     assert_eq!(port_in_log(en), Some(41234));
-    let zh = "ipp-duplexd: 已作为打印机 'x' 监听 127.0.0.1:41234，转发到 ipp://127.0.0.1:9/print";
+    let zh =
+        "ipp-duplexd-fork: 已作为打印机 'x' 监听 127.0.0.1:41234，转发到 ipp://127.0.0.1:9/print";
     assert_eq!(port_in_log(zh), Some(41234));
-    assert_eq!(port_in_log("ipp-duplexd: something else entirely"), None);
+    assert_eq!(
+        port_in_log("ipp-duplexd-fork: something else entirely"),
+        None
+    );
     assert_eq!(port_in_log("... 127.0.0.1:1 and 127.0.0.1:2 ..."), None);
 }
 
-/// Start ipp-duplexd on a kernel-assigned port; `extra` may change the language.
+/// Start ipp-duplexd-fork on a kernel-assigned port; `extra` may change the language.
 #[allow(clippy::zombie_processes)] // the returned Daemon owns the child
 fn start_daemon_with(extra: &[&str]) -> (Daemon, u16) {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let log = std::env::temp_dir().join(format!(
-        "ipp-duplexd-i18n-{}-{}.log",
+        "ipp-duplexd-fork-i18n-{}-{}.log",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     let file = std::fs::File::create(&log).unwrap();
-    let child = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd"))
+    let child = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-fork"))
         .args([
             "--printer",
             "ipp://127.0.0.1:9/print",
@@ -245,13 +252,13 @@ fn start_daemon_with(extra: &[&str]) -> (Daemon, u16) {
             "1",
         ])
         .args(extra)
-        .env("IPP_DUPLEXD_LANG", "en")
+        .env("IPP_DUPLEXD_FORK_LANG", "en")
         .env("LANGUAGE", "")
         .env("LC_ALL", "en_US.UTF-8")
         .env("LANG", "en_US.UTF-8")
         .stderr(Stdio::from(file))
         .spawn()
-        .expect("failed to start ipp-duplexd");
+        .expect("failed to start ipp-duplexd-fork");
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         let text = std::fs::read_to_string(&log).unwrap_or_default();
@@ -266,7 +273,7 @@ fn start_daemon_with(extra: &[&str]) -> (Daemon, u16) {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    panic!("ipp-duplexd never reported its port");
+    panic!("ipp-duplexd-fork never reported its port");
 }
 
 /// The English daemon (the request headers decide what the HTTP answers say).
@@ -403,14 +410,14 @@ fn ipp_responses_declare_the_language_of_their_text() {
 // ---------------------------------------------------------- the setup tool
 
 fn setup(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-setup"))
+    Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-fork-setup"))
         .args(args)
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default())
         .env("HOME", std::env::temp_dir())
-        .env("IPP_DUPLEXD_LANG", "en")
+        .env("IPP_DUPLEXD_FORK_LANG", "en")
         .output()
-        .expect("failed to run ipp-duplexd-setup")
+        .expect("failed to run ipp-duplexd-fork-setup")
 }
 
 #[test]

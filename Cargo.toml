@@ -1,11 +1,11 @@
 [package]
-name = "ipp-duplexd"
+name = "ipp-duplexd-fork"
 version = "0.1.3"
 edition = "2021"
 authors = ["Sami Kalliomäki <sami@kalliomaki.me>"]
 description = "Loopback IPP printer that performs manual duplex on a real IPP printer"
 license = "MIT"
-repository = "https://github.com/SamiKalliomaki/ipp-duplexd"
+repository = "https://github.com/Wraindrock/ipp-duplexd-fork"
 
 [dependencies]
 rust-i18n = "4"

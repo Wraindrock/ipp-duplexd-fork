@@ -11,7 +11,7 @@ use std::borrow::Cow;
 pub const FALLBACK: &str = "en";
 
 /// Set this environment variable to override the locale of every message.
-pub const LANG_ENV: &str = "IPP_DUPLEXD_LANG";
+pub const LANG_ENV: &str = "IPP_DUPLEXD_FORK_LANG";
 
 /// Every locale compiled into the binaries, with its own name for itself.
 pub const CATALOG: &[(&str, &str)] = &[("en", "English"), ("zh-CN", "简体中文")];
@@ -80,7 +80,7 @@ pub fn from_env() -> Option<&'static str> {
     from_lookup(|name| std::env::var(name).ok())
 }
 
-/// First of `IPP_DUPLEXD_LANG`, `$LANGUAGE`, `$LC_ALL`, `$LC_MESSAGES` or
+/// First of `IPP_DUPLEXD_FORK_LANG`, `$LANGUAGE`, `$LC_ALL`, `$LC_MESSAGES` or
 /// `$LANG` that names a locale we have a catalog for.
 ///
 /// `$LANGUAGE` is a colon-separated priority list, so it is walked in order.

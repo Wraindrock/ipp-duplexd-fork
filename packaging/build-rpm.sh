@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build an RPM (Fedora / RHEL / openSUSE) from the working tree.
-# Needs: cargo, rpmbuild. Result: packaging/ipp-duplexd-<ver>-1[.<dist>].<arch>.rpm
+# Needs: cargo, rpmbuild. Result: packaging/ipp-duplexd-fork-<ver>-1[.<dist>].<arch>.rpm
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,10 +20,10 @@ trap 'rm -rf "$top"' EXIT
 mkdir -p "$top/BUILD" "$top/BUILDROOT" "$top/RPMS" "$top/SOURCES" "$top/SPECS" "$top/SRPMS"
 
 # same file list as the Arch tarball; locales/ is needed at compile time
-tar czf "$top/SOURCES/ipp-duplexd.tar.gz" \
-    --transform "s,^,ipp-duplexd/," \
+tar czf "$top/SOURCES/ipp-duplexd-fork.tar.gz" \
+    --transform "s,^,ipp-duplexd-fork/," \
     Cargo.toml Cargo.lock src locales README.md LICENSE \
-    packaging/ipp-duplexd.service packaging/ipp-duplexd.conf.example
+    packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
 
 # --nodeps: the BuildRequires above are what a distribution build checks;
 # this script must also work on a host without an RPM database (the same way
@@ -35,7 +35,7 @@ rpmbuild -bb --nodeps \
     --define "_dbpath $top/db" \
     --define "_tmppath $top/tmp" \
     --define "ipp_version $ver" \
-    packaging/rpm/ipp-duplexd.spec
+    packaging/rpm/ipp-duplexd-fork.spec
 
 built=$(find "$top/RPMS" -name '*.rpm' -print -quit)
 if [[ -z "$built" ]]; then
@@ -55,15 +55,15 @@ listing=$(rpm --dbpath "$top/db" -qpl "$out")
 requires=$(rpm --dbpath "$top/db" -qpR "$out")
 problems=()
 has() { grep -Fxq -- "$1" <<<"$listing"; }
-has /usr/bin/ipp-duplexd || problems+=("no /usr/bin/ipp-duplexd")
-has /usr/bin/ipp-duplexd-setup || problems+=("no /usr/bin/ipp-duplexd-setup")
-has /usr/lib/systemd/user/ipp-duplexd.service || problems+=("no systemd user unit")
-# Fedora puts docs in /usr/share/doc/ipp-duplexd-<version>/, other layouts use
-# a fixed /usr/share/doc/ipp-duplexd/, so only the file name and the directory
+has /usr/bin/ipp-duplexd-fork || problems+=("no /usr/bin/ipp-duplexd-fork")
+has /usr/bin/ipp-duplexd-fork-setup || problems+=("no /usr/bin/ipp-duplexd-fork-setup")
+has /usr/lib/systemd/user/ipp-duplexd-fork.service || problems+=("no systemd user unit")
+# Fedora puts docs in /usr/share/doc/ipp-duplexd-fork-<version>/, other layouts use
+# a fixed /usr/share/doc/ipp-duplexd-fork/, so only the file name and the directory
 # prefix are checked
-grep -Eq '^/usr/share/doc/ipp-duplexd[^/]*/README\.md$' <<<"$listing" \
+grep -Eq '^/usr/share/doc/ipp-duplexd-fork[^/]*/README\.md$' <<<"$listing" \
     || problems+=("no README")
-grep -Eq '^/usr/share/licenses/ipp-duplexd[^/]*/LICENSE$' <<<"$listing" \
+grep -Eq '^/usr/share/licenses/ipp-duplexd-fork[^/]*/LICENSE$' <<<"$listing" \
     || problems+=("no license")
 grep -Fxq 'qpdf' <<<"$requires" || problems+=("no qpdf dependency")
 # the catalogs are compiled into the binaries; nothing should be installed for

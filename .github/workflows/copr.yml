@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:latest
     env:
-      COPR_PROJECT: ${{ vars.COPR_PROJECT || 'wraindrock/ipp-duplexd' }}
+      COPR_PROJECT: ${{ vars.COPR_PROJECT || 'wraindrock/ipp-duplexd-fork' }}
       COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
     steps:
       - name: Check whether COPR is configured

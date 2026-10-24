@@ -6,7 +6,7 @@ _version: 1
 
 # ---------------------------------------------- daemon: command line, startup
 daemon.usage: |
-  usage: ipp-duplexd --printer ipp://HOST[:PORT]/PATH [options]
+  usage: ipp-duplexd-fork --printer ipp://HOST[:PORT]/PATH [options]
 
     --printer URI        real printer (a local CUPS queue works well:
                          ipp://127.0.0.1:631/printers/NAME)
@@ -23,7 +23,7 @@ daemon.usage: |
                          direction)
     --poll N             seconds between job-state polls (default 2)
     --lang CODE          language of messages and the status page
-                         (en, zh-CN; default from $IPP_DUPLEXD_LANG,
+                         (en, zh-CN; default from $IPP_DUPLEXD_FORK_LANG,
                          $LANGUAGE, $LC_ALL or $LANG)
 daemon.err.needs_value: "%{what} needs a value"
 daemon.err.bad_auto_continue: "bad --auto-continue"
@@ -67,7 +67,7 @@ daemon.http.flip_none: "no job is waiting for a flip"
 daemon.http.method_not_allowed: "method not allowed"
 
 # ------------------------------------------------- daemon: status page text
-daemon.page.header: "ipp-duplexd '%{name}' -> %{uri}"
+daemon.page.header: "ipp-duplexd-fork '%{name}' -> %{uri}"
 daemon.page.hint: "GET /flip to continue after flipping the stack"
 daemon.page.job: "job %{id} \"%{name}\" (%{user}): %{state} %{message}"
 
@@ -108,16 +108,16 @@ daemon.dialog.not_yet: "Not yet"
 
 # ---------------------------------------------------------- setup wizard
 setup.usage: |
-  ipp-duplexd-setup — set up the manual duplex virtual printer
+  ipp-duplexd-fork-setup — set up the manual duplex virtual printer
 
-  Walks through: choosing the real printer, writing ~/.config/ipp-duplexd.conf,
-  enabling the ipp-duplexd systemd user service, and adding the virtual printer
+  Walks through: choosing the real printer, writing ~/.config/ipp-duplexd-fork.conf,
+  enabling the ipp-duplexd-fork systemd user service, and adding the virtual printer
   as a driverless CUPS queue.
 
   Options (all optional; anything not given is asked interactively):
     --printer URI     real printer, e.g. ipp://127.0.0.1:631/printers/laser
     --queue NAME      CUPS queue name for the virtual printer
-    --listen ADDR     ipp-duplexd listen address       (default 127.0.0.1:6632)
+    --listen ADDR     ipp-duplexd-fork listen address       (default 127.0.0.1:6632)
     --lang CODE       language of the messages (en, zh-CN)
     --no-service      skip the systemd service step
     --no-queue        skip the CUPS queue step
@@ -125,29 +125,29 @@ setup.usage: |
     -h, --help        this help
 setup.err.unknown_option: "unknown option '%{arg}'"
 setup.err.bad_lang: "unsupported language '%{lang}'; known languages: %{list}"
-setup.err.no_qpdf: "! qpdf is not installed — ipp-duplexd needs it to split pages."
+setup.err.no_qpdf: "! qpdf is not installed — ipp-duplexd-fork needs it to split pages."
 setup.err.no_qpdf_hint: "  Install it first (e.g. 'sudo pacman -S qpdf' / 'sudo apt install qpdf')."
 setup.err.continue_anyway: "Continue anyway?"
-setup.err.no_daemon: "! could not find the 'ipp-duplexd' binary (not in PATH or next to this tool)."
+setup.err.no_daemon: "! could not find the 'ipp-duplexd-fork' binary (not in PATH or next to this tool)."
 setup.err.no_daemon_hint: "  Install the package or run 'cargo build --release' first."
-setup.title: "ipp-duplexd setup — manual duplex virtual printer"
-setup.step.printer: "Step 1: the real printer ipp-duplexd forwards to"
+setup.title: "ipp-duplexd-fork setup — manual duplex virtual printer"
+setup.step.printer: "Step 1: the real printer ipp-duplexd-fork forwards to"
 setup.printer.found: "  found: %{model}"
 setup.printer.bad_uri: "! '%{uri}' is not a usable printer URI: %{err}"
 setup.printer.no_answer: "! no IPP printer answered at %{uri}"
 setup.printer.no_answer_hint: "  (fine if it is just switched off right now)"
 setup.printer.use_anyway: "Use it anyway?"
-setup.step.config: "Step 2: ipp-duplexd configuration (~/.config/ipp-duplexd.conf)"
+setup.step.config: "Step 2: ipp-duplexd-fork configuration (~/.config/ipp-duplexd-fork.conf)"
 setup.ask.advanced: "Change advanced options (flip dialog, rotation, blank page)?"
 setup.ask.gui: "Open a desktop dialog when it is time to flip? (else: curl /flip)"
 setup.ask.rotate: "Rotate the even (back) pages by 180°?"
 setup.ask.blank: "Blank-page padding for odd page counts (leading/trailing/none)"
-setup.step.service: "Step 3: run ipp-duplexd as a service"
-setup.service.no_systemd: "  systemd not found — start ipp-duplexd yourself:"
+setup.step.service: "Step 3: run ipp-duplexd-fork as a service"
+setup.service.no_systemd: "  systemd not found — start ipp-duplexd-fork yourself:"
 setup.service.skipped: "  skipped (--no-service)"
-setup.service.waiting: "  waiting for ipp-duplexd on %{listen} "
+setup.service.waiting: "  waiting for ipp-duplexd-fork on %{listen} "
 setup.service.up: "  virtual printer is up: %{model}"
-setup.service.down: "! ipp-duplexd is not answering on %{listen} — check: journalctl --user -u ipp-duplexd"
+setup.service.down: "! ipp-duplexd-fork is not answering on %{listen} — check: journalctl --user -u ipp-duplexd-fork"
 setup.step.queue: "Step 4: add the virtual printer to CUPS"
 setup.queue.name: "CUPS queue name"
 setup.queue.no_lpadmin: "  lpadmin (CUPS) not found — on the machine you print from, run:"
@@ -170,13 +170,13 @@ setup.service.installed: "  installed %{path}"
 setup.service.cannot_write: "! cannot write %{path}: %{err}"
 setup.service.no_display: "! this desktop session does not export the display variables to systemd"
 setup.service.no_display_hint: "  the flip dialog will not open until it can reach your display."
-setup.service.no_display_conf: "  put them in ~/.config/environment.d/ipp-duplexd.conf:"
-setup.service.enable_failed: "! systemctl --user enable --now ipp-duplexd failed: %{err}"
-setup.service.start_manually: "  start it manually instead: %{bin} <args from ~/.config/ipp-duplexd.conf>"
-setup.service.enabled: "  service ipp-duplexd enabled and started (journalctl --user -u ipp-duplexd for logs)"
-setup.queue.already: "  CUPS queue '%{queue}' already points at ipp-duplexd"
+setup.service.no_display_conf: "  put them in ~/.config/environment.d/ipp-duplexd-fork.conf:"
+setup.service.enable_failed: "! systemctl --user enable --now ipp-duplexd-fork failed: %{err}"
+setup.service.start_manually: "  start it manually instead: %{bin} <args from ~/.config/ipp-duplexd-fork.conf>"
+setup.service.enabled: "  service ipp-duplexd-fork enabled and started (journalctl --user -u ipp-duplexd-fork for logs)"
+setup.queue.already: "  CUPS queue '%{queue}' already points at ipp-duplexd-fork"
 setup.queue.exists: "  CUPS queue '%{queue}' exists with a different device (%{uri})"
-setup.queue.repoint: "Repoint it at ipp-duplexd?"
+setup.queue.repoint: "Repoint it at ipp-duplexd-fork?"
 setup.queue.added: "  added CUPS queue '%{queue}' -> %{uri}"
 setup.queue.test: "  test it with: lp -d %{queue} some.pdf"
 setup.queue.lpadmin_failed: "! lpadmin failed: %{err}"

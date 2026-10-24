@@ -10,10 +10,10 @@ After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
-# Put e.g.  IPP_DUPLEXD_ARGS=--printer ipp://127.0.0.1:631/printers/laser
-# into ~/.config/ipp-duplexd.conf (see ipp-duplexd.conf.example).
-EnvironmentFile=%h/.config/ipp-duplexd.conf
-ExecStart=/usr/bin/ipp-duplexd $IPP_DUPLEXD_ARGS
+# Put e.g.  IPP_DUPLEXD_FORK_ARGS=--printer ipp://127.0.0.1:631/printers/laser
+# into ~/.config/ipp-duplexd-fork.conf (see ipp-duplexd-fork.conf.example).
+EnvironmentFile=%h/.config/ipp-duplexd-fork.conf
+ExecStart=/usr/bin/ipp-duplexd-fork $IPP_DUPLEXD_FORK_ARGS
 Restart=on-failure
 RestartSec=5
 

@@ -1,10 +1,10 @@
 name: dnf repository
 
 # Publishes an installable dnf repository on GitHub Pages, so Fedora users get
-# `dnf install ipp-duplexd` and `dnf upgrade` without downloading RPMs by hand
+# `dnf install ipp-duplexd-fork` and `dnf upgrade` without downloading RPMs by hand
 # and without a COPR account:
 #
-#   https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd.repo
+#   https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd-fork.repo
 #
 # Every job here is a check as much as a build: the RPMs are installed from the
 # generated repository in a clean container before anything is published, so a
@@ -82,31 +82,31 @@ jobs:
       - name: Install it the way a user would, only from the generated files
         run: |
           repo="file://$PWD/repo/fedora/${{ matrix.release }}/x86_64"
-          dnf -y --repofrompath=ipp-duplexd,"$repo" \
-                 --setopt=ipp-duplexd.gpgcheck=0 \
-                 install ipp-duplexd
-          rpm -q ipp-duplexd
+          dnf -y --repofrompath=ipp-duplexd-fork,"$repo" \
+                 --setopt=ipp-duplexd-fork.gpgcheck=0 \
+                 install ipp-duplexd-fork
+          rpm -q ipp-duplexd-fork
 
       - name: Check what got installed
         run: |
-          files="$(rpm -ql ipp-duplexd)"
+          files="$(rpm -ql ipp-duplexd-fork)"
           echo "$files"
-          for f in /usr/bin/ipp-duplexd /usr/bin/ipp-duplexd-setup \
-                   /usr/lib/systemd/user/ipp-duplexd.service; do
+          for f in /usr/bin/ipp-duplexd-fork /usr/bin/ipp-duplexd-fork-setup \
+                   /usr/lib/systemd/user/ipp-duplexd-fork.service; do
             case "$files" in
               *"$f"*) ;;
               *) echo "missing from the package: $f"; exit 1 ;;
             esac
             test -e "$f"
           done
-          # Fedora keeps the docs in /usr/share/doc/ipp-duplexd, older rpmbuilds
-          # in /usr/share/doc/ipp-duplexd-0.1.3, so match on the prefix only.
+          # Fedora keeps the docs in /usr/share/doc/ipp-duplexd-fork, older rpmbuilds
+          # in /usr/share/doc/ipp-duplexd-fork-0.1.3, so match on the prefix only.
           case "$files" in
-            *"/usr/share/doc/ipp-duplexd"*"/README.md"*) ;;
+            *"/usr/share/doc/ipp-duplexd-fork"*"/README.md"*) ;;
             *) echo "no README in the package"; exit 1 ;;
           esac
           case "$files" in
-            *"/usr/share/licenses/ipp-duplexd"*"/LICENSE"*) ;;
+            *"/usr/share/licenses/ipp-duplexd-fork"*"/LICENSE"*) ;;
             *) echo "no LICENSE in the package"; exit 1 ;;
           esac
           # the catalogs are compiled in, so no locale files may be shipped
@@ -120,8 +120,8 @@ jobs:
 
       - name: The binary still speaks both languages
         run: |
-          en="$(ipp-duplexd 2>&1 || true)"
-          zh="$(ipp-duplexd --lang zh-CN 2>&1 || true)"
+          en="$(ipp-duplexd-fork 2>&1 || true)"
+          zh="$(ipp-duplexd-fork --lang zh-CN 2>&1 || true)"
           case "$en" in *"--printer is required"*) ;; *) echo "no English usage: $en"; exit 1;; esac
           case "$zh" in *"必须指定 --printer"*) ;; *) echo "no Chinese usage: $zh"; exit 1;; esac
 
@@ -143,9 +143,9 @@ jobs:
           done
           # A ready-made repository file: $releasever/$basearch pick the
           # directory built above, and the packages are unsigned.
-          cat > site/ipp-duplexd.repo <<'REPO'
-          [ipp-duplexd]
-          name=ipp-duplexd - manual duplex printing via a virtual IPP printer
+          cat > site/ipp-duplexd-fork.repo <<'REPO'
+          [ipp-duplexd-fork]
+          name=ipp-duplexd-fork - manual duplex printing via a virtual IPP printer
           baseurl=https://wraindrock.github.io/ipp-duplexd-fork/fedora/$releasever/$basearch
           enabled=1
           gpgcheck=0
@@ -192,9 +192,9 @@ jobs:
 
       - name: Install the way the README tells people to
         run: |
-          curl -fsS -o /etc/yum.repos.d/ipp-duplexd.repo \
-            https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd.repo
-          cat /etc/yum.repos.d/ipp-duplexd.repo
-          dnf -y install ipp-duplexd
-          rpm -q ipp-duplexd
-          ipp-duplexd --lang zh-CN 2>&1 | grep -q '必须指定 --printer'
+          curl -fsS -o /etc/yum.repos.d/ipp-duplexd-fork.repo \
+            https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd-fork.repo
+          cat /etc/yum.repos.d/ipp-duplexd-fork.repo
+          dnf -y install ipp-duplexd-fork
+          rpm -q ipp-duplexd-fork
+          ipp-duplexd-fork --lang zh-CN 2>&1 | grep -q '必须指定 --printer'

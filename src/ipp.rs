@@ -297,7 +297,7 @@ pub fn request(target: &PrinterUri, msg: &Msg) -> Result<Msg, String> {
     let mut writer = stream.try_clone().map_err(|e| e.to_string())?;
     write!(
         writer,
-        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/ipp\r\nContent-Length: {}\r\nUser-Agent: ipp-duplexd/0.1\r\nConnection: close\r\n\r\n",
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/ipp\r\nContent-Length: {}\r\nUser-Agent: ipp-duplexd-fork/0.1\r\nConnection: close\r\n\r\n",
         target.path, addr, body.len()
     )
     .map_err(|e| e.to_string())?;

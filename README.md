@@ -1,4 +1,4 @@
-# ipp-duplexd — manual duplex printing via a virtual IPP printer
+# ipp-duplexd-fork — manual duplex printing via a virtual IPP printer
 
 > This is a fork of [ipp-duplexd][upstream], adding i18n and a GUI manager.
 > On Fedora, install it with `dnf` from the [GitHub-hosted repository][repo];
@@ -15,7 +15,7 @@ No PPDs and no CUPS backend involved — it registers as a modern driverless
 (IPP Everywhere) queue, the architecture future CUPS 3.x mandates.
 
 ```
-app --> CUPS queue (driverless) --> ipp-duplexd (127.0.0.1:6632)
+app --> CUPS queue (driverless) --> ipp-duplexd-fork (127.0.0.1:6632)
                                        |  qpdf split
                                        |--> real printer: odd pages (1,3,5,...)
                                        |    (polls until finished, then stops
@@ -27,19 +27,19 @@ app --> CUPS queue (driverless) --> ipp-duplexd (127.0.0.1:6632)
 ## Packages
 
 ```sh
-./packaging/build-arch.sh   # Arch Linux: packaging/arch/ipp-duplexd-*.pkg.tar.zst  (needs makepkg)
-./packaging/build-deb.sh    # Debian/Ubuntu: packaging/ipp-duplexd_*.deb            (needs dpkg-deb)
-./packaging/build-rpm.sh    # Fedora/RHEL/openSUSE: packaging/ipp-duplexd-*.rpm      (needs rpm-build)
+./packaging/build-arch.sh   # Arch Linux: packaging/arch/ipp-duplexd-fork-*.pkg.tar.zst  (needs makepkg)
+./packaging/build-deb.sh    # Debian/Ubuntu: packaging/ipp-duplexd-fork_*.deb            (needs dpkg-deb)
+./packaging/build-rpm.sh    # Fedora/RHEL/openSUSE: packaging/ipp-duplexd-fork-*.rpm      (needs rpm-build)
 ```
 
-All three install `/usr/bin/ipp-duplexd`, the `ipp-duplexd-setup` helper, a
+All three install `/usr/bin/ipp-duplexd-fork`, the `ipp-duplexd-fork-setup` helper, a
 systemd **user** unit, and docs, and depend on `qpdf`. Translations are
 compiled into the binaries, so there are no locale files to install or lose.
 
-The RPM spec is [packaging/rpm/ipp-duplexd.spec](packaging/rpm/ipp-duplexd.spec);
+The RPM spec is [packaging/rpm/ipp-duplexd-fork.spec](packaging/rpm/ipp-duplexd-fork.spec);
 it takes the version from `Cargo.toml` (passed in by the build script) and
-installs the docs where Fedora expects them — `/usr/share/doc/ipp-duplexd` on
-newer rpmbuilds, `/usr/share/doc/ipp-duplexd-<version>` on older ones.
+installs the docs where Fedora expects them — `/usr/share/doc/ipp-duplexd-fork` on
+newer rpmbuilds, `/usr/share/doc/ipp-duplexd-fork-<version>` on older ones.
 It fetches the crates while building, so a submission to a distro builder that
 has no network (Fedora Koji, OBS) needs the dependencies vendored first, e.g.
 with `rust2rpm`; `build-rpm.sh` also verifies the finished package (both
@@ -52,11 +52,29 @@ The fork publishes its RPMs as a **dnf repository on GitHub Pages**, rebuilt on
 every release. No accounts, no downloading files by hand:
 
 ```sh
-sudo dnf config-manager addrepo --from-repofile=https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd.repo
-# dnf4 (Fedora 40 and older): sudo dnf config-manager --add-repo https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd.repo
-sudo dnf install ipp-duplexd
+sudo dnf config-manager addrepo --from-repofile=https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd-fork.repo
+# dnf4 (Fedora 40 and older): sudo dnf config-manager --add-repo https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd-fork.repo
+sudo dnf install ipp-duplexd-fork
 sudo dnf upgrade            # later: picks up new builds
 ```
+
+### Upgrading from the package named `ipp-duplexd`
+
+The fork is called `ipp-duplexd-fork`, so it cannot collide with the upstream
+project. Earlier builds were published under the upstream name. `dnf upgrade`
+alone will not switch names, so install it explicitly once — the package
+carries `Obsoletes: ipp-duplexd` and replaces the old one:
+
+```sh
+sudo dnf install ipp-duplexd-fork
+mv ~/.config/ipp-duplexd.conf ~/.config/ipp-duplexd-fork.conf   # if you made one
+systemctl --user disable --now ipp-duplexd
+systemctl --user enable  --now ipp-duplexd-fork
+sudo rm /etc/yum.repos.d/ipp-duplexd.repo   # the repository file is now ipp-duplexd-fork.repo
+```
+
+CUPS queues point at `ipp://127.0.0.1:6632/ipp/print` and keep working; only the
+package, the service unit and the config file changed names.
 
 The repository is built in Fedora 43, Fedora 44 and Rawhide containers, and
 `$releasever`/`$basearch` in the repository file select the right directory, so
@@ -74,8 +92,8 @@ more, and if that matters to you, build the package yourself with
 Removing it again:
 
 ```sh
-sudo dnf remove ipp-duplexd
-sudo rm /etc/yum.repos.d/ipp-duplexd.repo
+sudo dnf remove ipp-duplexd-fork
+sudo rm /etc/yum.repos.d/ipp-duplexd-fork.repo
 ```
 
 `.github/workflows/dnf-repo.yml` does the work: build the RPM, index it with
@@ -88,8 +106,8 @@ A COPR project was the other option, and it is not set up: COPR needs a Fedora
 account, and it has no GitHub login. The pieces are in the repository
 ([`.copr/Makefile`](.copr/Makefile) and
 [`.github/workflows/copr.yml`](.github/workflows/copr.yml)); with an account,
-`copr-cli create ipp-duplexd --chroot fedora-43-x86_64`, store `~/.config/copr`
-as the `COPR_CONFIG` secret, and `sudo dnf copr enable wraindrock/ipp-duplexd`
+`copr-cli create ipp-duplexd-fork --chroot fedora-43-x86_64`, store `~/.config/copr`
+as the `COPR_CONFIG` secret, and `sudo dnf copr enable wraindrock/ipp-duplexd-fork`
 becomes an alternative to the repository above.
 
 ## Setup
@@ -97,27 +115,27 @@ becomes an alternative to the repository above.
 After installing (or `cargo build --release`), run:
 
 ```sh
-ipp-duplexd-setup
+ipp-duplexd-fork-setup
 ```
 
 It walks through the whole setup interactively: pick the real printer
 from your CUPS queues (or enter an `ipp://` URI, which is probed),
 optionally tweak the flip dialog / rotation / blank-page options, write
-`~/.config/ipp-duplexd.conf`, enable and start the systemd user service
+`~/.config/ipp-duplexd-fork.conf`, enable and start the systemd user service
 (writing a user unit if the packaged one is absent), and register the
 virtual printer as a driverless CUPS queue. Every answer has a sensible
 default; `--yes` runs non-interactively, `--no-service` / `--no-queue`
 skip steps, and `--printer URI` / `--queue NAME` / `--listen ADDR`
 preseed answers. `--lang CODE` runs the wizard in that language and
 remembers it (`--lang CODE` is written into the config file, so the
-service speaks it too). See `ipp-duplexd-setup --help`.
+service speaks it too). See `ipp-duplexd-fork-setup --help`.
 
 To do the same by hand instead:
 
 ```sh
-cp /usr/share/doc/ipp-duplexd*/ipp-duplexd.conf.example ~/.config/ipp-duplexd.conf
-$EDITOR ~/.config/ipp-duplexd.conf     # set --printer for your real printer
-systemctl --user enable --now ipp-duplexd
+cp /usr/share/doc/ipp-duplexd-fork*/ipp-duplexd-fork.conf.example ~/.config/ipp-duplexd-fork.conf
+$EDITOR ~/.config/ipp-duplexd-fork.conf     # set --printer for your real printer
+systemctl --user enable --now ipp-duplexd-fork
 lpadmin -p laser-duplex -E -v ipp://127.0.0.1:6632/ipp/print -m everywhere
 ```
 
@@ -151,7 +169,7 @@ Pick the language with `--lang CODE`, or leave it to the environment.
 First match wins:
 
 1. `--lang CODE` (daemon and setup wizard)
-2. `$IPP_DUPLEXD_LANG`
+2. `$IPP_DUPLEXD_FORK_LANG`
 3. `$LANGUAGE` (colon-separated list)
 4. `$LC_ALL`, then `$LC_MESSAGES`, then `$LANG`
 
@@ -202,11 +220,11 @@ printer's `ipp://` endpoint:
 
 ```sh
 cargo build --release
-./target/release/ipp-duplexd --printer ipp://127.0.0.1:631/printers/laser
+./target/release/ipp-duplexd-fork --printer ipp://127.0.0.1:631/printers/laser
 ```
 
 For permanent use, set it up as described in [Setup](#setup) above
-(`ipp-duplexd-setup` is built alongside as `target/release/ipp-duplexd-setup`,
+(`ipp-duplexd-fork-setup` is built alongside as `target/release/ipp-duplexd-fork-setup`,
 and writes the user unit for you if the packaged one is absent).
 
 ## Formatting
@@ -238,7 +256,7 @@ actually used (usage text, setup wizard, status page, `/flip`,
 `Content-Language`).
 
 `tests/e2e.rs` is an end-to-end suite (`cargo test`): each test starts
-its own ipp-duplexd and a mock IPP printer in place of the real one (on
+its own ipp-duplexd-fork and a mock IPP printer in place of the real one (on
 kernel-assigned ports, so they run in parallel) and plays CUPS as the
 IPP client. Covered: attribute proxying and state mirroring (including
 the unreachable-printer case), duplex splitting, blank padding,
@@ -259,7 +277,7 @@ cargo test
 | `--name NAME` | `manual-duplex` | Printer name to advertise |
 | `--blank WHERE` | `leading` | Blank-page padding of the even pass for odd page counts: `leading`, `trailing`, `none`. Switch if the last page of odd-count documents lands on the wrong sheet. |
 | `--auto-continue N` | off | Print the backs N seconds after the odd pass finishes instead of waiting for `/flip` (takes precedence over `--gui`) |
-| `--no-gui` | (gui on) | Disable the flip dialog. By default a desktop dialog (zenity, kdialog, or xmessage — first one found) opens when it is time to flip; clicking OK prints the backs. `/flip` keeps working in parallel; a dismissed or failed dialog never cancels the job, and without any dialog tool ipp-duplexd just waits for `/flip`. |
+| `--no-gui` | (gui on) | Disable the flip dialog. By default a desktop dialog (zenity, kdialog, or xmessage — first one found) opens when it is time to flip; clicking OK prints the backs. `/flip` keeps working in parallel; a dismissed or failed dialog never cancels the job, and without any dialog tool ipp-duplexd-fork just waits for `/flip`. |
 | `--rotate-even 0\|180` | `180` | Rotation of the even pages; set to `0` if the backs come out upside down for your flip direction |
 | `--poll N` | `2` | Seconds between job-state polls of the real printer |
 | `--lang CODE` | from the environment | Language of the messages and the status page (`en`, `zh-CN`); see [Languages](#languages) |
@@ -271,7 +289,7 @@ cargo test
   virtual queue shows online/idle/processing/stopped (and supply alerts)
   exactly as the hardware reports them. If the real printer is
   unreachable the queue shows stopped with `offline-report`, but keeps
-  accepting jobs — they print once it is back. ipp-duplexd's own duplex flow
+  accepting jobs — they print once it is back. ipp-duplexd-fork's own duplex flow
   overrides this while waiting for a flip (`media-needed`).
 - **Printer properties**: `Get-Printer-Attributes` responses are proxied
   from the real printer (cached 30 s), so the virtual printer advertises
