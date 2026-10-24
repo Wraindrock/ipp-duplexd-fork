@@ -46,9 +46,9 @@ was installed) and deletes it rather than leave a broken artifact.
 
 ## Installing from COPR (Fedora, RHEL, openSUSE)
 
-The fork is published as an
-[COPR][copr] repository, so Fedora and its derivatives get installs and
-updates through `dnf`:
+The fork is built in a [COPR][copr] repository, so Fedora and its derivatives
+get installs and updates through `dnf`. The project has to exist once (see the
+end of this section) before `dnf copr enable` can find it:
 
 ```sh
 sudo dnf copr enable wraindrock/ipp-duplexd
