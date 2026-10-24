@@ -38,7 +38,8 @@ compiled into the binaries, so there are no locale files to install or lose.
 
 The RPM spec is [packaging/rpm/ipp-duplexd.spec](packaging/rpm/ipp-duplexd.spec);
 it takes the version from `Cargo.toml` (passed in by the build script) and
-installs the docs where Fedora expects them (`/usr/share/doc/ipp-duplexd-<version>`).
+installs the docs where Fedora expects them — `/usr/share/doc/ipp-duplexd` on
+newer rpmbuilds, `/usr/share/doc/ipp-duplexd-<version>` on older ones.
 It fetches the crates while building, so a submission to a distro builder that
 has no network (Fedora Koji, OBS) needs the dependencies vendored first, e.g.
 with `rust2rpm`; `build-rpm.sh` also verifies the finished package (both
@@ -114,7 +115,7 @@ service speaks it too). See `ipp-duplexd-setup --help`.
 To do the same by hand instead:
 
 ```sh
-cp /usr/share/doc/ipp-duplexd/ipp-duplexd.conf.example ~/.config/ipp-duplexd.conf
+cp /usr/share/doc/ipp-duplexd*/ipp-duplexd.conf.example ~/.config/ipp-duplexd.conf
 $EDITOR ~/.config/ipp-duplexd.conf     # set --printer for your real printer
 systemctl --user enable --now ipp-duplexd
 lpadmin -p laser-duplex -E -v ipp://127.0.0.1:6632/ipp/print -m everywhere

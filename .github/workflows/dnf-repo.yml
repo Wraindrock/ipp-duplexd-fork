@@ -92,13 +92,23 @@ jobs:
           test -x /usr/bin/ipp-duplexd
           test -x /usr/bin/ipp-duplexd-setup
           test -f /usr/lib/systemd/user/ipp-duplexd.service
-          test -f /usr/share/doc/ipp-duplexd-*/README.md
-          test -f /usr/share/licenses/ipp-duplexd-*/LICENSE
+          # Fedora keeps the docs in /usr/share/doc/ipp-duplexd, older rpmbuilds
+          # in /usr/share/doc/ipp-duplexd-0.1.3 - accept either.
+          docs="$(ls -d /usr/share/doc/ipp-duplexd* 2>/dev/null || true)"
+          case "$docs" in
+            ""|*"No such"*) echo "no documentation installed"; exit 1 ;;
+          esac
+          test -f "$docs/README.md"
+          licenses="$(ls -d /usr/share/licenses/ipp-duplexd* 2>/dev/null || true)"
+          case "$licenses" in
+            ""|*"No such"*) echo "no license installed"; exit 1 ;;
+          esac
+          test -f "$licenses/LICENSE"
           # the catalogs are compiled in, so no locale files may be shipped
-          if rpm -ql ipp-duplexd | grep -qE 'locales|\.yml$'; then
-            echo "the package installs locale data, which it should not"
-            exit 1
-          fi
+          files="$(rpm -ql ipp-duplexd)"
+          case "$files" in
+            *locales*|*.yml*|*.yaml*) echo "the package ships locale data:"; echo "$files"; exit 1 ;;
+          esac
 
       - name: The binary still speaks both languages
         run: |
