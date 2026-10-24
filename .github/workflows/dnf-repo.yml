@@ -177,10 +177,11 @@ jobs:
         release: ["43", "44", "rawhide"]
     steps:
       - name: Wait until the served repository is complete
-        shell: python
         env:
           RELEASE: ${{ matrix.release }}
         run: |
+          dnf -y install python3 >/dev/null
+          python3 - <<'PY'
           import gzip, hashlib, os, time
           import urllib.request
           import xml.etree.ElementTree as ET
@@ -224,7 +225,7 @@ jobs:
               time.sleep(10)
           else:
               raise SystemExit("the published repository never became complete")
-
+          PY
       - name: Install the way the README tells people to
         run: |
           curl -fsS -o /etc/yum.repos.d/ipp-duplexd-fork.repo \
