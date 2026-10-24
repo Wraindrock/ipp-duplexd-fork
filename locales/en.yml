@@ -1,0 +1,184 @@
+# English catalog (the reference: every other locale must define every key,
+# with the same %{placeholders}). tests/i18n.rs enforces both.
+_version: 1
+
+# ------------------------------------------------------------------ shared
+
+# ---------------------------------------------- daemon: command line, startup
+daemon.usage: |
+  usage: ipp-duplexd --printer ipp://HOST[:PORT]/PATH [options]
+
+    --printer URI        real printer (a local CUPS queue works well:
+                         ipp://127.0.0.1:631/printers/NAME)
+    --listen ADDR:PORT   listen address (default 127.0.0.1:6632)
+    --name NAME          printer name to advertise (default manual-duplex)
+    --blank WHERE        blank-page padding for odd page counts:
+                         leading (default) | trailing | none
+    --auto-continue N    print the backs N seconds after the odd pass
+                         finishes instead of waiting for GET /flip
+    --no-gui             do not open the flip-confirmation desktop dialog
+                         (zenity/kdialog/xmessage); rely on GET /flip
+    --rotate-even 0|180  rotate even pages 180 degrees (default 180; use 0
+                         if the backs come out upside down for your flip
+                         direction)
+    --poll N             seconds between job-state polls (default 2)
+    --lang CODE          language of messages and the status page
+                         (en, zh-CN; default from $IPP_DUPLEXD_LANG,
+                         $LANGUAGE, $LC_ALL or $LANG)
+daemon.err.needs_value: "%{what} needs a value"
+daemon.err.bad_auto_continue: "bad --auto-continue"
+daemon.err.bad_rotate_even: "bad --rotate-even"
+daemon.err.bad_poll: "bad --poll"
+daemon.err.unknown_arg: "unknown argument '%{arg}'"
+daemon.err.bad_blank: "--blank must be trailing, leading or none"
+daemon.err.bad_rotate_value: "--rotate-even must be 0 or 180"
+daemon.err.printer_required: "--printer is required"
+daemon.err.bad_printer_uri: "bad printer URI '%{uri}': %{err}"
+daemon.err.bad_lang: "unsupported language '%{lang}'; known languages: %{list}"
+daemon.err.no_qpdf: "qpdf not found in PATH; it is required"
+daemon.err.bind: "cannot bind %{addr}: %{err}"
+daemon.err.qpdf_spawn: "qpdf spawn: %{err}"
+daemon.err.qpdf_read: "qpdf could not read the document (PDF input required)"
+daemon.err.bad_page_count: "bad page count"
+daemon.err.remote_rejected: "real printer rejected the job (ipp status 0x%{status})"
+daemon.err.remote_no_job_id: "real printer returned no job-id"
+daemon.err.remote_state: "remote job %{id} ended in state %{state}"
+daemon.err.remote_lost: "lost contact with real printer: %{err}"
+daemon.log.nonloopback: "warning: listening on non-loopback address %{addr}"
+daemon.log.listening: "listening on %{addr} as printer '%{name}', forwarding to %{uri}"
+daemon.log.lpadmin: "add a CUPS queue with: lpadmin -p %{name} -E -v ipp://127.0.0.1:%{port}/ipp/print -m everywhere"
+daemon.log.accept_error: "accept error: %{err}"
+daemon.log.bad_body: "bad request body: %{err}"
+daemon.log.bad_ipp: "unparseable ipp request: %{err}"
+daemon.log.unsupported_op: "unsupported operation 0x%{op}"
+daemon.log.attr_fetch_failed: "cannot fetch printer attributes from real printer: %{err}"
+daemon.log.job_failed: "job %{id} failed: %{err}"
+daemon.log.job_summary: "job %{id} '%{name}': %{pages} pages, manual duplex"
+daemon.log.job_odd_done: "job %{id}: odd pages done. %{message}"
+daemon.log.job_completed: "job %{id} completed"
+daemon.log.no_dialog: "no dialog tool found (tried zenity, kdialog, xmessage); waiting for GET /flip"
+daemon.log.dialog_opened: "flip dialog opened via %{bin}"
+daemon.log.dialog_dismissed: "flip dialog dismissed; still waiting for GET /flip"
+daemon.log.qpdf_output: "qpdf %{args}: %{output}"
+
+# ------------------------------------------------------------- daemon: HTTP
+daemon.http.flip_ok: "ok, printing the backs"
+daemon.http.flip_none: "no job is waiting for a flip"
+daemon.http.method_not_allowed: "method not allowed"
+
+# ------------------------------------------------- daemon: status page text
+daemon.page.header: "ipp-duplexd '%{name}' -> %{uri}"
+daemon.page.hint: "GET /flip to continue after flipping the stack"
+daemon.page.job: "job %{id} \"%{name}\" (%{user}): %{state} %{message}"
+
+# ------------------------------------------------------- daemon: job states
+daemon.state.pending: "pending"
+daemon.state.pending_held: "pending-held"
+daemon.state.processing: "processing"
+daemon.state.stopped: "stopped"
+daemon.state.canceled: "canceled"
+daemon.state.aborted: "aborted"
+daemon.state.completed: "completed"
+daemon.state.unknown: "unknown"
+
+# ---------------------------------------------------- daemon: job progress
+daemon.job.preparing: "preparing"
+daemon.job.printing_odd: "printing odd pages"
+daemon.job.printing_even: "printing even pages"
+daemon.job.pass_through: "printing (pass-through)"
+daemon.job.done: "done"
+daemon.job.done_single_page: "done (single page)"
+daemon.job.canceled: "canceled"
+daemon.job.flip_auto: "flip the stack; backs print in %{secs}s"
+daemon.job.flip_gui: "flip the stack; click OK in the dialog"
+daemon.job.flip_http: "flip the stack; then: curl http://127.0.0.1:%{port}/flip"
+daemon.job.multi_document: "multi-document jobs not supported"
+daemon.job.empty_document: "empty document"
+
+# ------------------------------------ daemon: text sent to IPP clients/CUPS
+daemon.attr.need_flip: "odd pages printed - flip the stack and confirm"
+daemon.attr.offline: "real printer is unreachable"
+daemon.attr.info: "Manual duplex on %{make}"
+daemon.attr.make_and_model: "%{make} + manual duplex"
+
+# -------------------------------------------------------- daemon: the dialog
+daemon.dialog.text: "%{job}: odd pages printed.\nFlip the stack and reload it, then click OK to print the backs."
+daemon.dialog.ok: "OK, print backs"
+daemon.dialog.not_yet: "Not yet"
+
+# ---------------------------------------------------------- setup wizard
+setup.usage: |
+  ipp-duplexd-setup — set up the manual duplex virtual printer
+
+  Walks through: choosing the real printer, writing ~/.config/ipp-duplexd.conf,
+  enabling the ipp-duplexd systemd user service, and adding the virtual printer
+  as a driverless CUPS queue.
+
+  Options (all optional; anything not given is asked interactively):
+    --printer URI     real printer, e.g. ipp://127.0.0.1:631/printers/laser
+    --queue NAME      CUPS queue name for the virtual printer
+    --listen ADDR     ipp-duplexd listen address       (default 127.0.0.1:6632)
+    --lang CODE       language of the messages (en, zh-CN)
+    --no-service      skip the systemd service step
+    --no-queue        skip the CUPS queue step
+    --yes             no questions; use defaults for anything not given
+    -h, --help        this help
+setup.err.unknown_option: "unknown option '%{arg}'"
+setup.err.bad_lang: "unsupported language '%{lang}'; known languages: %{list}"
+setup.err.no_qpdf: "! qpdf is not installed — ipp-duplexd needs it to split pages."
+setup.err.no_qpdf_hint: "  Install it first (e.g. 'sudo pacman -S qpdf' / 'sudo apt install qpdf')."
+setup.err.continue_anyway: "Continue anyway?"
+setup.err.no_daemon: "! could not find the 'ipp-duplexd' binary (not in PATH or next to this tool)."
+setup.err.no_daemon_hint: "  Install the package or run 'cargo build --release' first."
+setup.title: "ipp-duplexd setup — manual duplex virtual printer"
+setup.step.printer: "Step 1: the real printer ipp-duplexd forwards to"
+setup.printer.found: "  found: %{model}"
+setup.printer.bad_uri: "! '%{uri}' is not a usable printer URI: %{err}"
+setup.printer.no_answer: "! no IPP printer answered at %{uri}"
+setup.printer.no_answer_hint: "  (fine if it is just switched off right now)"
+setup.printer.use_anyway: "Use it anyway?"
+setup.step.config: "Step 2: ipp-duplexd configuration (~/.config/ipp-duplexd.conf)"
+setup.ask.advanced: "Change advanced options (flip dialog, rotation, blank page)?"
+setup.ask.gui: "Open a desktop dialog when it is time to flip? (else: curl /flip)"
+setup.ask.rotate: "Rotate the even (back) pages by 180°?"
+setup.ask.blank: "Blank-page padding for odd page counts (leading/trailing/none)"
+setup.step.service: "Step 3: run ipp-duplexd as a service"
+setup.service.no_systemd: "  systemd not found — start ipp-duplexd yourself:"
+setup.service.skipped: "  skipped (--no-service)"
+setup.service.waiting: "  waiting for ipp-duplexd on %{listen} "
+setup.service.up: "  virtual printer is up: %{model}"
+setup.service.down: "! ipp-duplexd is not answering on %{listen} — check: journalctl --user -u ipp-duplexd"
+setup.step.queue: "Step 4: add the virtual printer to CUPS"
+setup.queue.name: "CUPS queue name"
+setup.queue.no_lpadmin: "  lpadmin (CUPS) not found — on the machine you print from, run:"
+setup.queue.skipped: "  skipped (--no-queue)"
+setup.done: "Done. Print to the new queue; after the odd pages, flip the stack and confirm in the dialog (or: curl http://127.0.0.1:%{port}/flip)."
+setup.done.status: "Status page: http://127.0.0.1:%{port}/"
+setup.choose.no_queues: "  no CUPS queues found; enter the printer's IPP endpoint directly."
+setup.choose.real_uri: "Real printer URI"
+setup.choose.recommend: "  going through the local CUPS queue is recommended: CUPS keeps doing any driver work, and TLS-only printers work too."
+setup.choose.or_uri: "    or enter an ipp:// URI directly"
+setup.choose.real_printer: "Real printer"
+setup.choose.bad_input: "  enter a number 1-%{n} or an ipp:// URI"
+setup.config.up_to_date: "  %{path} already up to date"
+setup.config.exists: "  %{path} exists:"
+setup.config.overwrite: "Overwrite it?"
+setup.config.keeping: "  keeping the existing config"
+setup.config.wrote: "  wrote %{path}: %{line}"
+setup.config.cannot_write: "! cannot write %{path}: %{err}"
+setup.service.installed: "  installed %{path}"
+setup.service.cannot_write: "! cannot write %{path}: %{err}"
+setup.service.no_display: "! this desktop session does not export the display variables to systemd"
+setup.service.no_display_hint: "  the flip dialog will not open until it can reach your display."
+setup.service.no_display_conf: "  put them in ~/.config/environment.d/ipp-duplexd.conf:"
+setup.service.enable_failed: "! systemctl --user enable --now ipp-duplexd failed: %{err}"
+setup.service.start_manually: "  start it manually instead: %{bin} <args from ~/.config/ipp-duplexd.conf>"
+setup.service.enabled: "  service ipp-duplexd enabled and started (journalctl --user -u ipp-duplexd for logs)"
+setup.queue.already: "  CUPS queue '%{queue}' already points at ipp-duplexd"
+setup.queue.exists: "  CUPS queue '%{queue}' exists with a different device (%{uri})"
+setup.queue.repoint: "Repoint it at ipp-duplexd?"
+setup.queue.added: "  added CUPS queue '%{queue}' -> %{uri}"
+setup.queue.test: "  test it with: lp -d %{queue} some.pdf"
+setup.queue.lpadmin_failed: "! lpadmin failed: %{err}"
+setup.queue.need_admin: "  you may need admin rights; try:"
+setup.probe.unnamed: "(unnamed IPP printer)"

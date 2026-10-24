@@ -349,6 +349,9 @@ fn start_daemon(
         "1",
     ])
     .args(extra)
+    // the assertions below are about the English protocol text; do not let the
+    // developer's locale leak into the daemon under test
+    .env("IPP_DUPLEXD_LANG", "en")
     .stderr(Stdio::from(std::fs::File::create(log).unwrap()));
     if let Some(p) = env_path {
         cmd.env("PATH", p);

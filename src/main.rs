@@ -13,13 +13,18 @@
 //! so the virtual printer advertises the real hardware's capabilities.
 
 use ipp_duplexd::ipp::{self, Attr, Group, Msg, PrinterUri};
+use ipp_duplexd::l10n;
+use rust_i18n::t;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::Command;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+// The catalogs live in locales/ and are compiled in from there.
+rust_i18n::i18n!("locales", fallback = "en");
 
 // IPP job states
 const J_PENDING: i32 = 3;
@@ -41,12 +46,40 @@ struct Config {
     gui: bool,          // open a desktop dialog to confirm the flip
 }
 
+/// A job's state message.
+///
+/// IPP clients are told the message in the daemon's language; the status page
+/// is rendered per request, so the key is kept until a page asks for it.
+enum JobMessage {
+    Text(String),
+    Key(&'static str, Vec<(&'static str, String)>),
+}
+
+impl JobMessage {
+    /// A catalog key without placeholders.
+    fn key(key: &'static str) -> Self {
+        JobMessage::Key(key, Vec::new())
+    }
+
+    /// A catalog key with `%{...}` placeholders.
+    fn with(key: &'static str, vars: Vec<(&'static str, String)>) -> Self {
+        JobMessage::Key(key, vars)
+    }
+
+    fn render(&self, locale: &str) -> String {
+        match self {
+            JobMessage::Text(text) => text.clone(),
+            JobMessage::Key(key, vars) => l10n::tr(locale, key, vars),
+        }
+    }
+}
+
 struct Job {
     id: i32,
     name: String,
     user: String,
     state: i32,
-    message: String,
+    message: JobMessage,
     // set for Create-Job jobs awaiting their Send-Document
     pending_attrs: Option<Vec<Attr>>,
 }
@@ -67,6 +100,15 @@ struct Ctx {
     attr_cache: Mutex<Option<(Instant, Option<Vec<Attr>>)>>,
 }
 
+/// The daemon's own language, settled by `parse_args` before anything is
+/// printed. `t!` reads the same value from rust-i18n's global locale; both are
+/// set from the one place, `parse_args`.
+static LANG: OnceLock<&'static str> = OnceLock::new();
+
+fn lang() -> &'static str {
+    LANG.get().copied().unwrap_or(l10n::FALLBACK)
+}
+
 fn log(msg: &str) {
     eprintln!("ipp-duplexd: {msg}");
 }
@@ -76,18 +118,25 @@ fn main() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("ipp-duplexd: {e}");
-            eprintln!("{USAGE}");
+            eprintln!("{}", l10n::text(lang(), "daemon.usage"));
             std::process::exit(2);
         }
     };
     if Command::new("qpdf").arg("--version").output().is_err() {
-        eprintln!("ipp-duplexd: qpdf not found in PATH; it is required");
+        eprintln!("ipp-duplexd: {}", t!("daemon.err.no_qpdf"));
         std::process::exit(1);
     }
     let listener = match TcpListener::bind(&cfg.listen) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("ipp-duplexd: cannot bind {}: {e}", cfg.listen);
+            eprintln!(
+                "ipp-duplexd: {}",
+                t!(
+                    "daemon.err.bind",
+                    addr = cfg.listen.as_str(),
+                    err = e.to_string()
+                )
+            );
             std::process::exit(1);
         }
     };
@@ -95,13 +144,16 @@ fn main() {
         Ok(a) => (a.to_string(), a.port()),
         Err(_) => (cfg.listen.clone(), 631),
     };
-    log(&format!(
-        "listening on {} as printer '{}', forwarding to {}",
-        addr, cfg.name, cfg.printer.uri
+    log(&t!(
+        "daemon.log.listening",
+        addr = addr.as_str(),
+        name = cfg.name.as_str(),
+        uri = cfg.printer.uri.as_str()
     ));
-    log(&format!(
-        "add a CUPS queue with: lpadmin -p {} -E -v ipp://127.0.0.1:{}/ipp/print -m everywhere",
-        cfg.name, port
+    log(&t!(
+        "daemon.log.lpadmin",
+        name = cfg.name.as_str(),
+        port = port
     ));
     let ctx = Arc::new(Ctx {
         cfg,
@@ -121,31 +173,51 @@ fn main() {
                 let ctx = ctx.clone();
                 std::thread::spawn(move || handle_client(ctx, s));
             }
-            Err(e) => log(&format!("accept error: {e}")),
+            Err(e) => log(&t!("daemon.log.accept_error", err = e.to_string())),
         }
     }
 }
 
-const USAGE: &str = "\
-usage: ipp-duplexd --printer ipp://HOST[:PORT]/PATH [options]
+/// `--flag value` lookup, for the one option that must be understood before
+/// the rest of the command line is parsed.
+fn arg_value(argv: &[String], flag: &str) -> Option<String> {
+    let mut args = argv.iter();
+    while let Some(a) = args.next() {
+        if a == flag {
+            return args.next().cloned();
+        }
+    }
+    None
+}
 
-  --printer URI        real printer (a local CUPS queue works well:
-                       ipp://127.0.0.1:631/printers/NAME)
-  --listen ADDR:PORT   listen address (default 127.0.0.1:6632)
-  --name NAME          printer name to advertise (default manual-duplex)
-  --blank WHERE        blank-page padding for odd page counts:
-                       leading (default) | trailing | none
-  --auto-continue N    print the backs N seconds after the odd pass
-                       finishes instead of waiting for GET /flip
-  --no-gui             do not open the flip-confirmation desktop dialog
-                       (zenity/kdialog/xmessage); rely on GET /flip
-  --rotate-even 0|180  rotate even pages 180 degrees (default 180; use 0
-                       if the backs come out upside down for your flip
-                       direction)
-  --poll N             seconds between job-state polls (default 2)";
+/// "en (English), zh-CN (简体中文)", for the unsupported-language error.
+fn language_list() -> String {
+    l10n::describe_all()
+}
 
 fn parse_args() -> Result<Config, String> {
-    let mut args = std::env::args().skip(1);
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    // The language is settled before any other option, so even the argument
+    // errors below already come out in the requested language.
+    let code = match arg_value(&argv, "--lang") {
+        Some(tag) => match l10n::normalize(&tag) {
+            Some(code) => code,
+            None => {
+                return Err(l10n::tr(
+                    l10n::FALLBACK,
+                    "daemon.err.bad_lang",
+                    &[("lang", tag), ("list", language_list())],
+                ))
+            }
+        },
+        None => l10n::from_env().unwrap_or(l10n::FALLBACK),
+    };
+    let _ = LANG.set(l10n::apply(code));
+    config_from(&argv)
+}
+
+fn config_from(argv: &[String]) -> Result<Config, String> {
+    let mut args = argv.iter();
     let mut listen = "127.0.0.1:6632".to_string();
     let mut printer = None;
     let mut name = "manual-duplex".to_string();
@@ -155,51 +227,62 @@ fn parse_args() -> Result<Config, String> {
     let mut poll = 2u64;
     let mut gui = true;
     while let Some(a) = args.next() {
-        let mut val = |what: &str| args.next().ok_or(format!("{what} needs a value"));
+        let mut val = |what: &str| {
+            args.next()
+                .cloned()
+                .ok_or_else(|| t!("daemon.err.needs_value", what = what).to_string())
+        };
         match a.as_str() {
             "--listen" => listen = val("--listen")?,
-            "--printer" => printer = Some(ipp::parse_uri(&val("--printer")?)?),
+            "--printer" => {
+                let uri = val("--printer")?;
+                printer = Some(ipp::parse_uri(&uri).map_err(|e| {
+                    t!("daemon.err.bad_printer_uri", uri = uri.as_str(), err = e).to_string()
+                })?);
+            }
             "--name" => name = val("--name")?,
             "--blank" => blank = val("--blank")?,
             "--auto-continue" => {
                 auto_continue = val("--auto-continue")?
                     .parse()
-                    .map_err(|_| "bad --auto-continue")?
+                    .map_err(|_| t!("daemon.err.bad_auto_continue").to_string())?
             }
             "--rotate-even" => {
                 rotate_even = val("--rotate-even")?
                     .parse()
-                    .map_err(|_| "bad --rotate-even")?
+                    .map_err(|_| t!("daemon.err.bad_rotate_even").to_string())?
             }
             "--poll" => {
                 poll = val("--poll")?
                     .parse::<u64>()
-                    .map_err(|_| "bad --poll")?
+                    .map_err(|_| t!("daemon.err.bad_poll").to_string())?
                     .max(1)
+            }
+            // already applied, by parse_args
+            "--lang" => {
+                val("--lang")?;
             }
             "--gui" => gui = true,
             "--no-gui" => gui = false,
-            "-h" | "--help" => return Err("".into()),
-            other => return Err(format!("unknown argument '{other}'")),
+            "-h" | "--help" => return Err(String::new()),
+            other => return Err(t!("daemon.err.unknown_arg", arg = other).to_string()),
         }
     }
     if !matches!(blank.as_str(), "trailing" | "leading" | "none") {
-        return Err("--blank must be trailing, leading or none".into());
+        return Err(t!("daemon.err.bad_blank").to_string());
     }
     if !matches!(rotate_even, 0 | 180) {
-        return Err("--rotate-even must be 0 or 180".into());
+        return Err(t!("daemon.err.bad_rotate_value").to_string());
     }
     if !listen.starts_with("127.")
         && !listen.starts_with("localhost:")
         && !listen.starts_with("[::1]")
     {
-        log(&format!(
-            "warning: listening on non-loopback address {listen}"
-        ));
+        log(&t!("daemon.log.nonloopback", addr = listen.as_str()));
     }
     Ok(Config {
         listen,
-        printer: printer.ok_or("--printer is required")?,
+        printer: printer.ok_or_else(|| t!("daemon.err.printer_required").to_string())?,
         name,
         blank,
         auto_continue,
@@ -236,6 +319,7 @@ fn handle_client(ctx: Arc<Ctx>, stream: TcpStream) {
         let mut chunked = false;
         let mut expect_continue = false;
         let mut keep_alive = true;
+        let mut accept_language = String::new();
         loop {
             let mut h = String::new();
             match reader.read_line(&mut h) {
@@ -254,6 +338,8 @@ fn handle_client(ctx: Arc<Ctx>, stream: TcpStream) {
                 expect_continue = true;
             } else if lower.starts_with("connection:") && lower.contains("close") {
                 keep_alive = false;
+            } else if let Some(v) = lower.strip_prefix("accept-language:") {
+                accept_language = v.trim().to_string();
             }
         }
         if expect_continue {
@@ -264,7 +350,7 @@ fn handle_client(ctx: Arc<Ctx>, stream: TcpStream) {
             match ipp::read_body(&mut reader, content_length, chunked) {
                 Ok(b) => b,
                 Err(e) => {
-                    log(&format!("bad request body: {e}"));
+                    log(&t!("daemon.log.bad_body", err = e.to_string()));
                     return;
                 }
             }
@@ -272,6 +358,9 @@ fn handle_client(ctx: Arc<Ctx>, stream: TcpStream) {
             Vec::new()
         };
 
+        // The status page and the flip replies follow the browser's language;
+        // IPP responses do not (see README, "What stays English").
+        let lang = l10n::negotiate(&accept_language);
         let (status, ctype, resp): (&str, &str, Vec<u8>) = match (method.as_str(), path.as_str()) {
             ("POST", _) => match ipp::parse(&body) {
                 Ok(req) => {
@@ -279,26 +368,36 @@ fn handle_client(ctx: Arc<Ctx>, stream: TcpStream) {
                     ("200 OK", "application/ipp", resp.encode())
                 }
                 Err(e) => {
-                    log(&format!("unparseable ipp request: {e}"));
+                    log(&t!("daemon.log.bad_ipp", err = e.as_str()));
                     ("400 Bad Request", "text/plain", e.into_bytes())
                 }
             },
             ("GET", "/flip") => {
                 let n = trigger_flip(&ctx);
                 let msg = if n {
-                    "ok, printing the backs\n"
+                    t!("daemon.http.flip_ok", locale = lang)
                 } else {
-                    "no job is waiting for a flip\n"
+                    t!("daemon.http.flip_none", locale = lang)
                 };
-                ("200 OK", "text/plain", msg.as_bytes().to_vec())
+                ("200 OK", "text/plain", format!("{msg}\n").into_bytes())
             }
-            ("GET", _) => ("200 OK", "text/plain", status_page(&ctx).into_bytes()),
-            _ => ("405 Method Not Allowed", "text/plain", b"nope\n".to_vec()),
+            ("GET", _) => ("200 OK", "text/plain", status_page(&ctx, lang).into_bytes()),
+            _ => (
+                "405 Method Not Allowed",
+                "text/plain",
+                format!("{}\n", t!("daemon.http.method_not_allowed", locale = lang)).into_bytes(),
+            ),
         };
         let conn = if keep_alive { "keep-alive" } else { "close" };
+        // Say which language a text response came out in, for caches/proxies.
+        let language = if ctype == "text/plain" {
+            format!("Content-Language: {lang}\r\n")
+        } else {
+            String::new()
+        };
         let _ = write!(
             writer,
-            "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: {conn}\r\n\r\n",
+            "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: {conn}\r\n{language}\r\n",
             resp.len()
         );
         let _ = writer.write_all(&resp);
@@ -309,38 +408,50 @@ fn handle_client(ctx: Arc<Ctx>, stream: TcpStream) {
     }
 }
 
-fn status_page(ctx: &Ctx) -> String {
+fn status_page(ctx: &Ctx, lang: &str) -> String {
     let jobs = ctx.jobs.lock().unwrap();
     let mut ids: Vec<_> = jobs.keys().copied().collect();
     ids.sort();
-    let mut out = format!(
-        "ipp-duplexd '{}' -> {}\nGET /flip to continue after flipping the stack\n\n",
-        ctx.cfg.name, ctx.cfg.printer.uri
+    let mut out = l10n::tr(
+        lang,
+        "daemon.page.header",
+        &[
+            ("name", ctx.cfg.name.clone()),
+            ("uri", ctx.cfg.printer.uri.clone()),
+        ],
     );
+    out.push('\n');
+    out.push_str(&l10n::text(lang, "daemon.page.hint"));
+    out.push_str("\n\n");
     for id in ids {
         let j = &jobs[&id];
-        out.push_str(&format!(
-            "job {} \"{}\" ({}): {} {}\n",
-            j.id,
-            j.name,
-            j.user,
-            state_name(j.state),
-            j.message
+        out.push_str(&l10n::tr(
+            lang,
+            "daemon.page.job",
+            &[
+                ("id", j.id.to_string()),
+                ("name", j.name.clone()),
+                ("user", j.user.clone()),
+                ("state", l10n::text(lang, state_key(j.state))),
+                ("message", j.message.render(lang)),
+            ],
         ));
+        out.push('\n');
     }
     out
 }
 
-fn state_name(s: i32) -> &'static str {
+/// The catalog key naming an IPP job state.
+fn state_key(s: i32) -> &'static str {
     match s {
-        J_PENDING => "pending",
-        4 => "pending-held",
-        J_PROCESSING => "processing",
-        J_STOPPED => "stopped",
-        J_CANCELED => "canceled",
-        J_ABORTED => "aborted",
-        J_COMPLETED => "completed",
-        _ => "unknown",
+        J_PENDING => "daemon.state.pending",
+        4 => "daemon.state.pending_held",
+        J_PROCESSING => "daemon.state.processing",
+        J_STOPPED => "daemon.state.stopped",
+        J_CANCELED => "daemon.state.canceled",
+        J_ABORTED => "daemon.state.aborted",
+        J_COMPLETED => "daemon.state.completed",
+        _ => "daemon.state.unknown",
     }
 }
 
@@ -360,7 +471,7 @@ fn trigger_flip(ctx: &Ctx) -> bool {
 // ----------------------------------------------------------------- IPP layer
 
 fn handle_ipp(ctx: &Arc<Ctx>, req: Msg) -> Msg {
-    match req.op_status {
+    let mut resp = match req.op_status {
         ipp::OP_GET_PRINTER_ATTRS => op_get_printer_attrs(ctx, &req),
         ipp::OP_VALIDATE_JOB => Msg::response(ipp::OK, req.request_id),
         ipp::OP_PRINT_JOB => op_print_job(ctx, req),
@@ -370,10 +481,24 @@ fn handle_ipp(ctx: &Arc<Ctx>, req: Msg) -> Msg {
         ipp::OP_GET_JOB_ATTRS => op_get_job_attrs(ctx, &req),
         ipp::OP_CANCEL_JOB => op_cancel_job(ctx, &req),
         other => {
-            log(&format!("unsupported operation 0x{other:04x}"));
+            log(&t!(
+                "daemon.log.unsupported_op",
+                op = format!("{other:04x}")
+            ));
             Msg::response(ipp::ERR_OP_NOT_SUPPORTED, req.request_id)
         }
+    };
+    // The text attributes in a response (job-state-message,
+    // printer-state-message, printer-info, ...) are generated in the daemon's
+    // language, so say so instead of claiming English.
+    for group in resp.groups.iter_mut().filter(|g| g.tag == ipp::G_OPERATION) {
+        for attr in group.attrs.iter_mut() {
+            if attr.name == "attributes-natural-language" {
+                *attr = Attr::str(ipp::T_LANGUAGE, "attributes-natural-language", lang());
+            }
+        }
     }
+    resp
 }
 
 fn req_user(req: &Msg) -> String {
@@ -475,11 +600,21 @@ fn op_send_document(ctx: &Arc<Ctx>, req: Msg) -> Msg {
     };
     if !last {
         // multi-document jobs are not supported
-        set_job_state(ctx, id, J_ABORTED, "multi-document jobs not supported");
+        set_job_state(
+            ctx,
+            id,
+            J_ABORTED,
+            JobMessage::key("daemon.job.multi_document"),
+        );
         return Msg::response(ipp::ERR_OP_NOT_SUPPORTED, req.request_id);
     }
     if req.data.is_empty() {
-        set_job_state(ctx, id, J_ABORTED, "empty document");
+        set_job_state(
+            ctx,
+            id,
+            J_ABORTED,
+            JobMessage::key("daemon.job.empty_document"),
+        );
         return Msg::response(ipp::ERR_BAD_REQUEST, req.request_id);
     }
     spawn_worker(ctx.clone(), id, req.data.clone(), attrs);
@@ -514,7 +649,9 @@ fn op_get_jobs(ctx: &Ctx, req: &Msg) -> Msg {
 }
 
 fn job_group_from(ctx: &Ctx, j: &Job) -> Group {
-    job_group(ctx, j.id, j.state, &j.message)
+    // IPP clients get the daemon's language whatever they asked for: one
+    // job-state-message is shared by every client of this job.
+    job_group(ctx, j.id, j.state, &j.message.render(lang()))
 }
 
 fn op_get_job_attrs(ctx: &Ctx, req: &Msg) -> Msg {
@@ -548,7 +685,7 @@ fn op_cancel_job(ctx: &Ctx, req: &Msg) -> Msg {
     match jobs.get_mut(&id) {
         Some(j) if j.state < J_CANCELED => {
             j.state = J_CANCELED;
-            j.message = "canceled".into();
+            j.message = JobMessage::key("daemon.job.canceled");
             drop(jobs);
             // wake a worker that may be waiting for the flip
             ctx.flip.cv.notify_all();
@@ -609,9 +746,7 @@ fn proxied_printer_attrs(ctx: &Ctx) -> Option<Vec<Attr>> {
             result
         }
         Err(e) => {
-            log(&format!(
-                "cannot fetch printer attributes from real printer: {e}"
-            ));
+            log(&t!("daemon.log.attr_fetch_failed", err = e.as_str()));
             *ctx.attr_cache.lock().unwrap() = Some((Instant::now(), None));
             None
         }
@@ -622,11 +757,11 @@ fn fallback_printer_attrs() -> Vec<Attr> {
     vec![
         Attr::str(ipp::T_CHARSET, "charset-configured", "utf-8"),
         Attr::str(ipp::T_CHARSET, "charset-supported", "utf-8"),
-        Attr::str(ipp::T_LANGUAGE, "natural-language-configured", "en"),
-        Attr::str(
+        Attr::str(ipp::T_LANGUAGE, "natural-language-configured", lang()),
+        Attr::strs(
             ipp::T_LANGUAGE,
             "generated-natural-language-supported",
-            "en",
+            &l10n::codes(),
         ),
         Attr::strs(ipp::T_KEYWORD, "ipp-versions-supported", &["1.1", "2.0"]),
         Attr::strs(ipp::T_KEYWORD, "pdl-override-supported", &["attempted"]),
@@ -708,7 +843,7 @@ fn apply_overrides(ctx: &Ctx, attrs: &mut Vec<Attr>, online: bool) {
             Attr::str(
                 ipp::T_TEXT,
                 "printer-state-message",
-                "odd pages printed - flip the stack and confirm",
+                &t!("daemon.attr.need_flip"),
             ),
         )
     } else if !online {
@@ -718,7 +853,7 @@ fn apply_overrides(ctx: &Ctx, attrs: &mut Vec<Attr>, online: bool) {
             Attr::str(
                 ipp::T_TEXT,
                 "printer-state-message",
-                "real printer is unreachable",
+                &t!("daemon.attr.offline"),
             ),
         )
     } else {
@@ -784,12 +919,12 @@ fn apply_overrides(ctx: &Ctx, attrs: &mut Vec<Attr>, online: bool) {
         Attr::str(
             ipp::T_TEXT,
             "printer-make-and-model",
-            &format!("{make} + manual duplex"),
+            &t!("daemon.attr.make_and_model", make = make.as_str()),
         ),
         Attr::str(
             ipp::T_TEXT,
             "printer-info",
-            &format!("Manual duplex on {make}"),
+            &t!("daemon.attr.info", make = make.as_str()),
         ),
         Attr::str(ipp::T_TEXT, "printer-location", "localhost"),
     ]);
@@ -822,21 +957,21 @@ fn new_job(ctx: &Ctx, name: String, user: String, pending_attrs: Option<Vec<Attr
             name,
             user,
             state: J_PENDING,
-            message: String::new(),
+            message: JobMessage::Text(String::new()),
             pending_attrs,
         },
     );
     id
 }
 
-fn set_job_state(ctx: &Ctx, id: i32, state: i32, message: &str) {
+fn set_job_state(ctx: &Ctx, id: i32, state: i32, message: JobMessage) {
     if let Some(j) = ctx.jobs.lock().unwrap().get_mut(&id) {
         // never resurrect a canceled job
         if j.state == J_CANCELED && state != J_CANCELED {
             return;
         }
         j.state = state;
-        j.message = message.to_string();
+        j.message = message;
     }
 }
 
@@ -858,8 +993,8 @@ fn spawn_worker(ctx: Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) {
         match process_job(&ctx, id, data, attrs) {
             Ok(()) => {}
             Err(e) => {
-                log(&format!("job {id} failed: {e}"));
-                set_job_state(&ctx, id, J_ABORTED, &e);
+                log(&t!("daemon.log.job_failed", id = id, err = e.as_str()));
+                set_job_state(&ctx, id, J_ABORTED, JobMessage::Text(e));
             }
         }
     });
@@ -870,14 +1005,16 @@ fn qpdf(args: &[&str]) -> Result<(), String> {
         .arg("--warning-exit-0")
         .args(args)
         .output()
-        .map_err(|e| format!("qpdf spawn: {e}"))?;
+        .map_err(|e| t!("daemon.err.qpdf_spawn", err = e.to_string()).to_string())?;
     if out.status.success() {
         Ok(())
     } else {
-        Err(format!(
-            "qpdf {args:?}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        ))
+        Err(t!(
+            "daemon.log.qpdf_output",
+            args = format!("{args:?}"),
+            output = String::from_utf8_lossy(&out.stderr).trim()
+        )
+        .to_string())
     }
 }
 
@@ -885,14 +1022,14 @@ fn qpdf_npages(file: &str) -> Result<u32, String> {
     let out = Command::new("qpdf")
         .args(["--warning-exit-0", "--show-npages", file])
         .output()
-        .map_err(|e| format!("qpdf spawn: {e}"))?;
+        .map_err(|e| t!("daemon.err.qpdf_spawn", err = e.to_string()).to_string())?;
     if !out.status.success() {
-        return Err("qpdf could not read the document (PDF input required)".into());
+        return Err(t!("daemon.err.qpdf_read").to_string());
     }
     String::from_utf8_lossy(&out.stdout)
         .trim()
         .parse()
-        .map_err(|_| "bad page count".into())
+        .map_err(|_| t!("daemon.err.bad_page_count").to_string())
 }
 
 const BLANK_PDF: &[u8] = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>\nendobj\nxref\n0 4\n0000000000 65535 f \ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n";
@@ -921,9 +1058,10 @@ impl Drop for DialogGuard {
 /// display) just logs, so a broken GUI can never cancel a print job —
 /// GET /flip keeps working in parallel.
 fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::process::Child>>>> {
-    let text = format!(
-        "{job}: odd pages printed.\nFlip the stack and reload it, then click OK to print the backs."
-    );
+    let text = t!("daemon.dialog.text", job = job).to_string();
+    let ok = t!("daemon.dialog.ok").to_string();
+    let not_yet = t!("daemon.dialog.not_yet").to_string();
+    let buttons = format!("{ok}:101,{not_yet}:102");
     let candidates: [(&str, Vec<&str>); 3] = [
         (
             "zenity",
@@ -934,21 +1072,13 @@ fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::
                 "--text",
                 &text,
                 "--ok-label",
-                "OK, print backs",
+                &ok,
                 "--cancel-label",
-                "Not yet",
+                &not_yet,
             ],
         ),
         ("kdialog", vec!["--title", "ipp-duplexd", "--yesno", &text]),
-        (
-            "xmessage",
-            vec![
-                "-center",
-                "-buttons",
-                "OK, print backs:101,Not yet:102",
-                &text,
-            ],
-        ),
+        ("xmessage", vec!["-center", "-buttons", &buttons, &text]),
     ];
     let mut child = None;
     for (bin, args) in &candidates {
@@ -961,10 +1091,10 @@ fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::
         }
     }
     let Some((bin, child)) = child else {
-        log("no dialog tool found (tried zenity, kdialog, xmessage); waiting for GET /flip");
+        log(&t!("daemon.log.no_dialog"));
         return None;
     };
-    log(&format!("flip dialog opened via {bin}"));
+    log(&t!("daemon.log.dialog_opened", bin = bin));
     let handle = Arc::new(Mutex::new(Some(child)));
     let h = handle.clone();
     let ctx = ctx.clone();
@@ -985,7 +1115,7 @@ fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::
                     if expect_ok(status) {
                         trigger_flip(&ctx);
                     } else {
-                        log("flip dialog dismissed; still waiting for GET /flip");
+                        log(&t!("daemon.log.dialog_dismissed"));
                     }
                     return;
                 }
@@ -1002,7 +1132,12 @@ fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::
 }
 
 fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Result<(), String> {
-    set_job_state(ctx, id, J_PROCESSING, "preparing");
+    set_job_state(
+        ctx,
+        id,
+        J_PROCESSING,
+        JobMessage::key("daemon.job.preparing"),
+    );
     // pid in the name: two ipp-duplexd instances both have a job 1
     let dir = std::env::temp_dir().join(format!("ipp-duplexd-{}-job-{id}", std::process::id()));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -1072,21 +1207,34 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
         .unwrap_or_default();
 
     if sides == "one-sided" {
-        set_job_state(ctx, id, J_PROCESSING, "printing (pass-through)");
+        set_job_state(
+            ctx,
+            id,
+            J_PROCESSING,
+            JobMessage::key("daemon.job.pass_through"),
+        );
         let rid = forward(ctx, &doc, &job_name, &user, &attrs)?;
         wait_remote(ctx, id, rid)?;
-        set_job_state(ctx, id, J_COMPLETED, "done");
+        set_job_state(ctx, id, J_COMPLETED, JobMessage::key("daemon.job.done"));
         return Ok(());
     }
 
     let npages = qpdf_npages(&doc)?;
-    log(&format!(
-        "job {id} '{job_name}': {npages} pages, manual duplex"
+    log(&t!(
+        "daemon.log.job_summary",
+        id = id,
+        name = job_name.as_str(),
+        pages = npages
     ));
 
     // pass 1: odd pages
     qpdf(&[&doc, "--pages", ".", "1-z:odd", "--", &p("odd.pdf")])?;
-    set_job_state(ctx, id, J_PROCESSING, "printing odd pages");
+    set_job_state(
+        ctx,
+        id,
+        J_PROCESSING,
+        JobMessage::key("daemon.job.printing_odd"),
+    );
     let rid = forward(
         ctx,
         &p("odd.pdf"),
@@ -1097,7 +1245,12 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
     wait_remote(ctx, id, rid)?;
 
     if npages <= 1 {
-        set_job_state(ctx, id, J_COMPLETED, "done (single page)");
+        set_job_state(
+            ctx,
+            id,
+            J_COMPLETED,
+            JobMessage::key("daemon.job.done_single_page"),
+        );
         return Ok(());
     }
 
@@ -1139,15 +1292,20 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
     *ctx.flip.requested.lock().unwrap() = false;
     let auto = ctx.cfg.auto_continue;
     let deadline = (auto > 0).then(|| Instant::now() + Duration::from_secs(auto));
-    let hint = if auto > 0 {
-        format!("backs print in {auto}s")
+    let waiting = if auto > 0 {
+        JobMessage::with("daemon.job.flip_auto", vec![("secs", auto.to_string())])
     } else if ctx.cfg.gui {
-        "click OK in the dialog".to_string()
+        JobMessage::key("daemon.job.flip_gui")
     } else {
-        format!("then: curl http://127.0.0.1:{}/flip", ctx.port)
+        JobMessage::with("daemon.job.flip_http", vec![("port", ctx.port.to_string())])
     };
-    set_job_state(ctx, id, J_STOPPED, &format!("flip the stack; {hint}"));
-    log(&format!("job {id}: odd pages done. Flip the stack; {hint}"));
+    let said = waiting.render(lang());
+    set_job_state(ctx, id, J_STOPPED, waiting);
+    log(&t!(
+        "daemon.log.job_odd_done",
+        id = id,
+        message = said.as_str()
+    ));
     // the guard kills a still-open dialog on every exit path
     let _dialog = if ctx.cfg.gui && auto == 0 {
         DialogGuard(spawn_flip_dialog(ctx, &job_name))
@@ -1170,7 +1328,12 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
             .unwrap();
     }
 
-    set_job_state(ctx, id, J_PROCESSING, "printing even pages");
+    set_job_state(
+        ctx,
+        id,
+        J_PROCESSING,
+        JobMessage::key("daemon.job.printing_even"),
+    );
     let rid = forward(
         ctx,
         &even,
@@ -1179,8 +1342,8 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
         &attrs,
     )?;
     wait_remote(ctx, id, rid)?;
-    set_job_state(ctx, id, J_COMPLETED, "done");
-    log(&format!("job {id} completed"));
+    set_job_state(ctx, id, J_COMPLETED, JobMessage::key("daemon.job.done"));
+    log(&t!("daemon.log.job_completed", id = id));
     Ok(())
 }
 
@@ -1231,14 +1394,15 @@ fn forward(ctx: &Ctx, file: &str, name: &str, user: &str, attrs: &[Attr]) -> Res
     msg.data = data;
     let resp = ipp::request(&ctx.cfg.printer, &msg)?;
     if resp.op_status > 0x00ff {
-        return Err(format!(
-            "real printer rejected the job (ipp status 0x{:04x})",
-            resp.op_status
-        ));
+        return Err(t!(
+            "daemon.err.remote_rejected",
+            status = format!("{:04x}", resp.op_status)
+        )
+        .to_string());
     }
     resp.find("job-id")
         .and_then(|a| a.first_int())
-        .ok_or_else(|| "real printer returned no job-id".into())
+        .ok_or_else(|| t!("daemon.err.remote_no_job_id").to_string())
 }
 
 fn wait_remote(ctx: &Ctx, id: i32, remote_id: i32) -> Result<(), String> {
@@ -1276,10 +1440,12 @@ fn wait_remote(ctx: &Ctx, id: i32, remote_id: i32) -> Result<(), String> {
                 match resp.find("job-state").and_then(|a| a.first_int()) {
                     Some(s) if s == J_COMPLETED => return Ok(()),
                     Some(s) if s == J_CANCELED || s == J_ABORTED => {
-                        return Err(format!(
-                            "remote job {remote_id} ended in state {}",
-                            state_name(s)
-                        ));
+                        return Err(t!(
+                            "daemon.err.remote_state",
+                            id = remote_id,
+                            state = l10n::text(lang(), state_key(s))
+                        )
+                        .to_string());
                     }
                     _ => {}
                 }
@@ -1287,7 +1453,7 @@ fn wait_remote(ctx: &Ctx, id: i32, remote_id: i32) -> Result<(), String> {
             Err(e) => {
                 errors += 1;
                 if errors >= 5 {
-                    return Err(format!("lost contact with real printer: {e}"));
+                    return Err(t!("daemon.err.remote_lost", err = e).to_string());
                 }
             }
         }

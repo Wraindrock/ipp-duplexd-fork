@@ -1,0 +1,182 @@
+# 简体中文（zh-CN）。键与 locales/en.yml 完全一致，%{占位符} 也必须一致，
+# 否则 tests/i18n.rs 会失败。
+_version: 1
+
+# ------------------------------------------------------------------ 通用
+
+# ------------------------------------------------ 守护进程：命令行与启动信息
+daemon.usage: |
+  用法：ipp-duplexd --printer ipp://HOST[:PORT]/PATH [选项]
+
+    --printer URI        真实打印机（推荐用本机 CUPS 队列：
+                         ipp://127.0.0.1:631/printers/名称）
+    --listen ADDR:PORT   监听地址（默认 127.0.0.1:6632）
+    --name NAME          对外公布的打印机名（默认 manual-duplex）
+    --blank WHERE        页数为奇数时空白页补在哪里：
+                         leading（默认，放前面）| trailing（放后面）| none
+    --auto-continue N    奇数页打完后等 N 秒自动打印背面，
+                         不再等待 GET /flip
+    --no-gui             不弹出翻纸确认对话框（zenity/kdialog/xmessage），
+                         只靠 GET /flip
+    --rotate-even 0|180  把偶数页旋转 180 度（默认 180；如果按你的翻面
+                         方向背面出来是倒着的，就改成 0）
+    --poll N             查询真实打印机作业状态的间隔秒数（默认 2）
+    --lang CODE          消息与状态页的语言（en、zh-CN；默认取自
+                         $IPP_DUPLEXD_LANG、$LANGUAGE、$LC_ALL 或 $LANG）
+daemon.err.needs_value: "%{what} 缺少取值"
+daemon.err.bad_auto_continue: "--auto-continue 取值无效"
+daemon.err.bad_rotate_even: "--rotate-even 取值无效"
+daemon.err.bad_poll: "--poll 取值无效"
+daemon.err.unknown_arg: "无法识别的参数 '%{arg}'"
+daemon.err.bad_blank: "--blank 只能是 trailing、leading 或 none"
+daemon.err.bad_rotate_value: "--rotate-even 只能是 0 或 180"
+daemon.err.printer_required: "必须指定 --printer"
+daemon.err.bad_printer_uri: "打印机 URI 无效 '%{uri}'：%{err}"
+daemon.err.bad_lang: "不支持的语言 '%{lang}'；可用语言：%{list}"
+daemon.err.no_qpdf: "PATH 里找不到 qpdf，而它是必需的"
+daemon.err.bind: "无法绑定 %{addr}：%{err}"
+daemon.err.qpdf_spawn: "无法启动 qpdf：%{err}"
+daemon.err.qpdf_read: "qpdf 读不了这份文档（只支持 PDF 输入）"
+daemon.err.bad_page_count: "页数解析失败"
+daemon.err.remote_rejected: "真实打印机拒绝了该作业（IPP 状态 0x%{status}）"
+daemon.err.remote_no_job_id: "真实打印机没有返回 job-id"
+daemon.err.remote_state: "真实打印机上的作业 %{id} 以状态 %{state} 结束"
+daemon.err.remote_lost: "与真实打印机失去联系：%{err}"
+daemon.log.nonloopback: "警告：正在非回环地址 %{addr} 上监听"
+daemon.log.listening: "已作为打印机 '%{name}' 监听 %{addr}，转发到 %{uri}"
+daemon.log.lpadmin: "用这条命令添加 CUPS 队列：lpadmin -p %{name} -E -v ipp://127.0.0.1:%{port}/ipp/print -m everywhere"
+daemon.log.accept_error: "accept 出错：%{err}"
+daemon.log.bad_body: "请求体有问题：%{err}"
+daemon.log.bad_ipp: "无法解析 IPP 请求：%{err}"
+daemon.log.unsupported_op: "不支持的操作 0x%{op}"
+daemon.log.attr_fetch_failed: "取不到真实打印机的属性：%{err}"
+daemon.log.job_failed: "作业 %{id} 失败：%{err}"
+daemon.log.job_summary: "作业 %{id}“%{name}”：共 %{pages} 页，手动双面"
+daemon.log.job_odd_done: "作业 %{id}：奇数页打完了。%{message}"
+daemon.log.job_completed: "作业 %{id} 已完成"
+daemon.log.no_dialog: "没找到对话框工具（试过 zenity、kdialog、xmessage），改为等待 GET /flip"
+daemon.log.dialog_opened: "已用 %{bin} 弹出翻纸对话框"
+daemon.log.dialog_dismissed: "翻纸对话框被关掉了，继续等待 GET /flip"
+daemon.log.qpdf_output: "qpdf %{args}：%{output}"
+
+# ------------------------------------------------------------ 守护进程：HTTP
+daemon.http.flip_ok: "好，正在打印背面"
+daemon.http.flip_none: "当前没有作业在等待翻纸"
+daemon.http.method_not_allowed: "不支持该请求方法"
+
+# -------------------------------------------------------- 守护进程：状态页文本
+daemon.page.header: "ipp-duplexd '%{name}' -> %{uri}"
+daemon.page.hint: "翻好纸后请求 GET /flip 继续"
+daemon.page.job: "作业 %{id}“%{name}”（%{user}）：%{state} %{message}"
+
+# ---------------------------------------------------------- 守护进程：作业状态
+daemon.state.pending: "等待中"
+daemon.state.pending_held: "等待中（挂起）"
+daemon.state.processing: "处理中"
+daemon.state.stopped: "已停止"
+daemon.state.canceled: "已取消"
+daemon.state.aborted: "已中止"
+daemon.state.completed: "已完成"
+daemon.state.unknown: "未知"
+
+# ---------------------------------------------------------- 守护进程：作业进度
+daemon.job.preparing: "准备中"
+daemon.job.printing_odd: "正在打印奇数页"
+daemon.job.printing_even: "正在打印偶数页"
+daemon.job.pass_through: "正在打印（直通）"
+daemon.job.done: "完成"
+daemon.job.done_single_page: "完成（只有一页）"
+daemon.job.canceled: "已取消"
+daemon.job.flip_auto: "请翻纸；%{secs} 秒后自动打印背面"
+daemon.job.flip_gui: "请翻纸；在对话框里点“确定”"
+daemon.job.flip_http: "请翻纸；然后执行：curl http://127.0.0.1:%{port}/flip"
+daemon.job.multi_document: "不支持一个作业里含多份文档"
+daemon.job.empty_document: "文档是空的"
+
+# ------------------------------------------- 守护进程：发给 IPP 客户端/CUPS 的文本
+daemon.attr.need_flip: "奇数页已打印——请翻纸并确认"
+daemon.attr.offline: "连不上真实打印机"
+daemon.attr.info: "%{make} 上的手动双面"
+daemon.attr.make_and_model: "%{make} + 手动双面"
+
+# -------------------------------------------------------------- 守护进程：对话框
+daemon.dialog.text: "%{job}：奇数页已打印。\n请翻纸并重新装好，然后点“确定”打印背面。"
+daemon.dialog.ok: "确定，打印背面"
+daemon.dialog.not_yet: "还没翻"
+
+# ---------------------------------------------------------------- 安装向导
+setup.usage: |
+  ipp-duplexd-setup —— 配置手动双面虚拟打印机
+
+  依次完成：选择真实打印机、写入 ~/.config/ipp-duplexd.conf、
+  启用 ipp-duplexd 的 systemd 用户服务、把虚拟打印机添加为
+  CUPS 的无驱动队列。
+
+  选项（全部可选；没给的会交互询问）：
+    --printer URI     真实打印机，例如 ipp://127.0.0.1:631/printers/laser
+    --queue NAME      虚拟打印机在 CUPS 里的队列名
+    --listen ADDR     ipp-duplexd 的监听地址（默认 127.0.0.1:6632）
+    --lang CODE       消息语言（en、zh-CN）
+    --no-service      跳过 systemd 服务这一步
+    --no-queue        跳过 CUPS 队列这一步
+    --yes             不再提问，未给出的选项用默认值
+    -h, --help        显示本帮助
+setup.err.unknown_option: "无法识别的选项 '%{arg}'"
+setup.err.bad_lang: "不支持的语言 '%{lang}'；可用语言：%{list}"
+setup.err.no_qpdf: "！没有安装 qpdf——ipp-duplexd 需要它来拆分页面。"
+setup.err.no_qpdf_hint: "  请先安装（例如 'sudo pacman -S qpdf' 或 'sudo apt install qpdf'）。"
+setup.err.continue_anyway: "仍要继续吗？"
+setup.err.no_daemon: "！找不到 'ipp-duplexd' 可执行文件（不在 PATH 里，也不在本工具旁边）。"
+setup.err.no_daemon_hint: "  请先安装软件包，或运行 'cargo build --release'。"
+setup.title: "ipp-duplexd 配置——手动双面虚拟打印机"
+setup.step.printer: "第 1 步：ipp-duplexd 要转发到的真实打印机"
+setup.printer.found: "  找到：%{model}"
+setup.printer.bad_uri: "！'%{uri}' 不能当作打印机 URI：%{err}"
+setup.printer.no_answer: "！%{uri} 上没有 IPP 打印机应答"
+setup.printer.no_answer_hint: "  （如果它只是现在关着机，那也没关系）"
+setup.printer.use_anyway: "仍然使用它吗？"
+setup.step.config: "第 2 步：ipp-duplexd 配置（~/.config/ipp-duplexd.conf）"
+setup.ask.advanced: "要改高级选项吗（翻纸对话框、旋转、空白页）？"
+setup.ask.gui: "该翻纸时弹出桌面对话框吗？（否则用 curl /flip）"
+setup.ask.rotate: "把偶数页（背面）旋转 180 度吗？"
+setup.ask.blank: "页数为奇数时空白页补在哪里（leading/trailing/none）"
+setup.step.service: "第 3 步：把 ipp-duplexd 作为服务运行"
+setup.service.no_systemd: "  找不到 systemd——请手动启动 ipp-duplexd："
+setup.service.skipped: "  已跳过（--no-service）"
+setup.service.waiting: "  正在等待 %{listen} 上的 ipp-duplexd "
+setup.service.up: "  虚拟打印机已就绪：%{model}"
+setup.service.down: "！%{listen} 上的 ipp-duplexd 没有响应——请检查：journalctl --user -u ipp-duplexd"
+setup.step.queue: "第 4 步：把虚拟打印机加入 CUPS"
+setup.queue.name: "CUPS 队列名称"
+setup.queue.no_lpadmin: "  找不到 lpadmin（CUPS）——请在一台要打印的机器上执行："
+setup.queue.skipped: "  已跳过（--no-queue）"
+setup.done: "配置完成。打印到新队列即可；奇数页打完后翻纸，并在对话框里确认（或执行 curl http://127.0.0.1:%{port}/flip）。"
+setup.done.status: "状态页：http://127.0.0.1:%{port}/"
+setup.choose.no_queues: "  没有找到 CUPS 队列；请直接填写打印机的 IPP 地址。"
+setup.choose.real_uri: "真实打印机 URI"
+setup.choose.recommend: "  推荐走本机 CUPS 队列：驱动转换仍由 CUPS 负责，只支持 TLS 的打印机也能用。"
+setup.choose.or_uri: "    或直接填写 ipp:// 地址"
+setup.choose.real_printer: "真实打印机"
+setup.choose.bad_input: "  请输入 1-%{n} 之间的编号，或一个 ipp:// 地址"
+setup.config.up_to_date: "  %{path} 已是最新"
+setup.config.exists: "  %{path} 已存在："
+setup.config.overwrite: "要覆盖它吗？"
+setup.config.keeping: "  保留现有配置"
+setup.config.wrote: "  已写入 %{path}：%{line}"
+setup.config.cannot_write: "！无法写入 %{path}：%{err}"
+setup.service.installed: "  已安装 %{path}"
+setup.service.cannot_write: "！无法写入 %{path}：%{err}"
+setup.service.no_display: "！当前桌面会话没有把显示相关变量传给 systemd"
+setup.service.no_display_hint: "  在能访问你的显示之前，翻纸对话框不会弹出来。"
+setup.service.no_display_conf: "  请把它们写进 ~/.config/environment.d/ipp-duplexd.conf："
+setup.service.enable_failed: "！systemctl --user enable --now ipp-duplexd 失败：%{err}"
+setup.service.start_manually: "  可以手动启动它：%{bin} <~/.config/ipp-duplexd.conf 里的参数>"
+setup.service.enabled: "  服务 ipp-duplexd 已启用并启动（日志见 journalctl --user -u ipp-duplexd）"
+setup.queue.already: "  CUPS 队列 '%{queue}' 已经指向 ipp-duplexd"
+setup.queue.exists: "  CUPS 队列 '%{queue}' 已存在，但设备地址不同（%{uri}）"
+setup.queue.repoint: "要把它改为指向 ipp-duplexd 吗？"
+setup.queue.added: "  已添加 CUPS 队列 '%{queue}' -> %{uri}"
+setup.queue.test: "  可以这样测试：lp -d %{queue} 某个文件.pdf"
+setup.queue.lpadmin_failed: "！lpadmin 失败：%{err}"
+setup.queue.need_admin: "  可能需要管理员权限，试试："
+setup.probe.unnamed: "（未命名的 IPP 打印机）"

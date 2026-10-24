@@ -1,7 +1,7 @@
 # ipp-duplexd — manual duplex printing via a virtual IPP printer
 
-A small dependency-free Rust daemon that turns any simplex printer into a
-manual duplex printer. It is itself an IPP printer, listening on
+A small Rust daemon (one dependency, [rust-i18n][i18n]) that turns any
+simplex printer into a manual duplex printer. It is itself an IPP printer, listening on
 `127.0.0.1` only. Print to it; it prints the **odd pages** on the real
 printer, pauses so you can flip the stack and feed it back in, then prints
 the **even pages in reverse order** on the backs.
@@ -27,7 +27,8 @@ app --> CUPS queue (driverless) --> ipp-duplexd (127.0.0.1:6632)
 ```
 
 Both install `/usr/bin/ipp-duplexd`, the `ipp-duplexd-setup` helper, a systemd
-**user** unit, and docs, and depend on `qpdf`.
+**user** unit, and docs, and depend on `qpdf`. Translations are compiled into
+the binaries, so there are no locale files to install or lose.
 
 ## Setup
 
@@ -45,7 +46,9 @@ optionally tweak the flip dialog / rotation / blank-page options, write
 virtual printer as a driverless CUPS queue. Every answer has a sensible
 default; `--yes` runs non-interactively, `--no-service` / `--no-queue`
 skip steps, and `--printer URI` / `--queue NAME` / `--listen ADDR`
-preseed answers. See `ipp-duplexd-setup --help`.
+preseed answers. `--lang CODE` runs the wizard in that language and
+remembers it (`--lang CODE` is written into the config file, so the
+service speaks it too). See `ipp-duplexd-setup --help`.
 
 To do the same by hand instead:
 
@@ -76,10 +79,63 @@ curl http://127.0.0.1:6632/flip
 
 `GET http://127.0.0.1:6632/` shows job status.
 
+## Languages
+
+The messages, the flip dialog, the setup wizard, and the status page
+come in English and Simplified Chinese; more catalogs are one file
+each (see [Adding a language](#adding-a-language)).
+
+Pick the language with `--lang CODE`, or leave it to the environment.
+First match wins:
+
+1. `--lang CODE` (daemon and setup wizard)
+2. `$IPP_DUPLEXD_LANG`
+3. `$LANGUAGE` (colon-separated list)
+4. `$LC_ALL`, then `$LC_MESSAGES`, then `$LANG`
+
+Tags follow the usual shapes (`zh_CN.UTF-8`, `zh-CN`, `en_US@euro`); a
+locale we have no catalog for falls back to its primary language, so
+`zh-TW` and `zh-Hant` get the Simplified Chinese catalog, and anything
+untranslated falls back to English. An unknown value on the command
+line is an error that lists the known codes.
+
+The status page and `GET /flip` answer in the language of the request's
+`Accept-Language` header and say which one they used
+(`Content-Language`); IPP `job-state-message` and the log follow the
+daemon's own language. The status page is the only thing that is
+per-request: the daemon logs once, in its configured language.
+
+What stays English on purpose:
+
+- **IPP protocol values**: attribute names and keywords
+  (`job-state-reasons`, `media-needed`, `sides`, ...), the
+  `attributes-natural-language` attribute, and printer identity strings
+  that are passed through from the real printer. Clients match on these
+  strings; translating them would break the protocol.
+- `anonymous` / `untitled`, used as job owner/name defaults that are
+  forwarded to the real printer.
+- Diagnostics of malformed IPP requests (the body of a 400 reply is a
+  protocol-level hint for whoever built the request).
+- The systemd unit's `Description=` (it is a package artifact, not
+  output), and the literal `Y/n` / `y/N` answer hints in the wizard
+  (answers `y`/`yes`/`n`/`no` — and `是`/`否` — are all accepted).
+
+### Adding a language
+
+1. Copy `locales/en.yml` to `locales/<code>.yml` and translate the
+   values, keeping every key and every `%{placeholder}` intact.
+2. Add `("<code>", "<native name>")` to `CATALOG` in `src/l10n.rs`.
+3. Run `cargo test`. `tests/i18n.rs` fails if a key is missing or has
+   different placeholders, if a key is used in the source but absent
+   from the catalog, or if a catalog key is unused; there is also a
+   test per language that the binaries and the status page actually
+   speak it.
+
 ## Building from source
 
-Any Rust toolchain works and there are no crates to fetch; `qpdf` must
-be installed. To try it in the foreground, point it at the real
+Any Rust toolchain works; `qpdf` must be installed. The first build
+fetches rust-i18n and its (compile-time only) parsing dependencies, so
+`Cargo.lock` is checked in and the packaging scripts build `--locked`. To try it in the foreground, point it at the real
 printer's `ipp://` endpoint:
 
 ```sh
@@ -114,6 +170,11 @@ this file to it instead, leaving any repo config you already had intact.)
 
 ## Tests
 
+`tests/i18n.rs` checks the catalogs against each other and against the
+sources, and runs both binaries to check that a requested language is
+actually used (usage text, setup wizard, status page, `/flip`,
+`Content-Language`).
+
 `tests/e2e.rs` is an end-to-end suite (`cargo test`): each test starts
 its own ipp-duplexd and a mock IPP printer in place of the real one (on
 kernel-assigned ports, so they run in parallel) and plays CUPS as the
@@ -139,6 +200,7 @@ cargo test
 | `--no-gui` | (gui on) | Disable the flip dialog. By default a desktop dialog (zenity, kdialog, or xmessage — first one found) opens when it is time to flip; clicking OK prints the backs. `/flip` keeps working in parallel; a dismissed or failed dialog never cancels the job, and without any dialog tool ipp-duplexd just waits for `/flip`. |
 | `--rotate-even 0\|180` | `180` | Rotation of the even pages; set to `0` if the backs come out upside down for your flip direction |
 | `--poll N` | `2` | Seconds between job-state polls of the real printer |
+| `--lang CODE` | from the environment | Language of the messages and the status page (`en`, `zh-CN`); see [Languages](#languages) |
 
 ## Behavior details
 
@@ -180,3 +242,11 @@ cargo test
 - PDF jobs only (`application/pdf`), which is what CUPS sends driverless
   printers by default.
 - One document per job (no multi-document Send-Document sequences).
+- Two catalogs so far (English, Simplified Chinese). Everything not in a
+  catalog falls back to English; translated *text* only — see
+  [Languages](#languages) for what stays English and why.
+- The language is per daemon, not per job: `job-state-message` and the
+  log use the configured language, only the HTTP status page follows
+  `Accept-Language`.
+
+[i18n]: https://github.com/longbridge/rust-i18n
