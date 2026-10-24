@@ -152,6 +152,52 @@ jobs:
           repo_gpgcheck=0
           metadata_expire=6h
           REPO
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <meta charset="utf-8">
+          <title>ipp-duplexd-fork packages</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { font: 16px/1.55 system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; color: #1c1c1c; }
+            h1 { font-size: 1.7rem; margin-bottom: .2rem; }
+            h2 { font-size: 1.1rem; margin-top: 2rem; }
+            p.sub { color: #666; margin-top: 0; }
+            pre { background: #f3f3f3; border-radius: 6px; padding: .85rem 1rem; overflow-x: auto; }
+            code { background: #f3f3f3; border-radius: 4px; padding: .1rem .3rem; }
+            a { color: #0a6b4a; }
+          </style>
+          <h1>ipp-duplexd-fork</h1>
+          <p class="sub">Manual duplex printing on any IPP printer &mdash; the dnf repository.</p>
+
+          <p>This is the package repository for
+          <a href="https://github.com/Wraindrock/ipp-duplexd-fork">ipp-duplexd-fork</a>, a fork of
+          <a href="https://github.com/SamiKalliomaki/ipp-duplexd">ipp-duplexd</a> adding translations
+          and, in time, a GUI manager.</p>
+
+          <h2>Install</h2>
+          <pre>sudo dnf config-manager addrepo --from-repofile=https://wraindrock.github.io/ipp-duplexd-fork/ipp-duplexd-fork.repo
+          sudo dnf install ipp-duplexd-fork</pre>
+          <p>On dnf4 (Fedora 40 and older) use <code>sudo dnf config-manager --add-repo</code> with the same URL.</p>
+
+          <h2>Upgrade</h2>
+          <pre>sudo dnf upgrade</pre>
+
+          <h2>Notes</h2>
+          <ul>
+            <li>Built in Fedora 43, Fedora 44 and Rawhide containers; each release gets the newest build.</li>
+            <li>Packages are unsigned, so the repository file sets <code>gpgcheck=0</code>.</li>
+            <li>Older builds are on the <a href="https://github.com/Wraindrock/ipp-duplexd-fork/releases">releases page</a>;
+                other distributions can use the <code>.rpm</code>, <code>.deb</code> or Arch package built there.</li>
+            <li><a href="https://github.com/Wraindrock/ipp-duplexd-fork/blob/main/README.md">README</a> &middot;
+                <a href="https://github.com/Wraindrock/ipp-duplexd-fork">Source</a> &middot;
+                <a href="https://github.com/Wraindrock/ipp-duplexd-fork/issues">Issues</a></li>
+          </ul>
+
+          <h2>&#23433;&#35013;</h2>
+          <p>&#21516;&#19978;&#20004;&#26465;&#21629;&#20196;&#65292;&#36825;&#26159; ipp-duplexd-fork
+          &#30340; dnf &#36719;&#20214;&#28304;&#65292;&#21253;&#21547; Fedora 43/44/Rawhide &#30340;&#26500;&#24314;&#12290;</p>
+          HTML
           ls -R site | head -40
 
       - name: Publish the gh-pages branch
