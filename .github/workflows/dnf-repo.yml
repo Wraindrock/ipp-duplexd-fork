@@ -89,25 +89,36 @@ jobs:
 
       - name: Check what got installed
         run: |
-          test -x /usr/bin/ipp-duplexd
-          test -x /usr/bin/ipp-duplexd-setup
-          test -f /usr/lib/systemd/user/ipp-duplexd.service
-          # Fedora keeps the docs in /usr/share/doc/ipp-duplexd, older rpmbuilds
-          # in /usr/share/doc/ipp-duplexd-0.1.3 - accept either.
-          docs="$(ls -d /usr/share/doc/ipp-duplexd* 2>/dev/null || true)"
-          case "$docs" in
-            ""|*"No such"*) echo "no documentation installed"; exit 1 ;;
-          esac
-          test -f "$docs/README.md"
-          licenses="$(ls -d /usr/share/licenses/ipp-duplexd* 2>/dev/null || true)"
-          case "$licenses" in
-            ""|*"No such"*) echo "no license installed"; exit 1 ;;
-          esac
-          test -f "$licenses/LICENSE"
-          # the catalogs are compiled in, so no locale files may be shipped
           files="$(rpm -ql ipp-duplexd)"
+          echo "$files"
+          for f in /usr/bin/ipp-duplexd /usr/bin/ipp-duplexd-setup \
+                   /usr/lib/systemd/user/ipp-duplexd.service; do
+            case "$files" in
+              *"$f"*) ;;
+              *) echo "missing from the package: $f"; exit 1 ;;
+            esac
+            test -e "$f"
+          done
+          # Fedora keeps the docs in /usr/share/doc/ipp-duplexd, older rpmbuilds
+          # in /usr/share/doc/ipp-duplexd-0.1.3, so match on the prefix only.
           case "$files" in
-            *locales*|*.yml*|*.yaml*) echo "the package ships locale data:"; echo "$files"; exit 1 ;;
+            *"/usr/share/doc/ipp-duplexd"*"/README.md"*) ;;
+            *) echo "no README in the package"; exit 1 ;;
+          esac
+          case "$files" in
+            *"/usr/share/licenses/ipp-duplexd"*"/LICENSE"*) ;;
+            *) echo "no LICENSE in the package"; exit 1 ;;
+          esac
+          # the catalogs are compiled in, so no locale files may be shipped
+          case "$files" in
+            *locales*|*.yml*|*.yaml*) echo "the package ships locale data"; exit 1 ;;
+          esac
+          # The docs are meant to be on disk after installing, not just listed.
+          docs="$(ls -d /usr/share/doc/ipp-duplexd* 2>/dev/null || true)"
+          echo "documentation directory: ${docs:-none}"
+          case "$docs" in
+            *ipp-duplexd*) test -f "$docs/README.md" ;;
+            *) echo "the documentation is not on disk"; exit 1 ;;
           esac
 
       - name: The binary still speaks both languages
