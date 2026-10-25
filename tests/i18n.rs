@@ -234,6 +234,18 @@ fn the_port_is_found_in_either_language() {
 /// Start ipp-duplexd-fork on a kernel-assigned port; `extra` may change the language.
 #[allow(clippy::zombie_processes)] // the returned Daemon owns the child
 fn start_daemon_with(extra: &[&str]) -> (Daemon, u16) {
+    start_daemon_configured(extra, "en")
+}
+
+/// Like [`start_daemon_with`], but the language comes from the environment
+/// instead of `--lang`, so the environment path is exercised too.
+#[allow(clippy::zombie_processes)] // the returned Daemon owns the child
+fn start_daemon_from_env(language: &str) -> (Daemon, u16) {
+    start_daemon_configured(&[], language)
+}
+
+#[allow(clippy::zombie_processes)] // the returned Daemon owns the child
+fn start_daemon_configured(extra: &[&str], language: &str) -> (Daemon, u16) {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let log = std::env::temp_dir().join(format!(
         "ipp-duplexd-fork-i18n-{}-{}.log",
@@ -252,7 +264,7 @@ fn start_daemon_with(extra: &[&str]) -> (Daemon, u16) {
             "1",
         ])
         .args(extra)
-        .env("IPP_DUPLEXD_FORK_LANG", "en")
+        .env("IPP_DUPLEXD_FORK_LANG", language)
         .env("LANGUAGE", "")
         .env("LC_ALL", "en_US.UTF-8")
         .env("LANG", "en_US.UTF-8")
@@ -360,6 +372,96 @@ fn attr_text(msg: &Msg, name: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Values of the `naturalLanguage` syntax must be all-lowercase US-ASCII per
+/// RFC 8011 Section 5.1.9 (which narrows RFC 5646's case-insensitive tags), and
+/// no longer than 63 octets.
+fn assert_language_values_are_ipp_compliant(msg: &Msg, context: &str) {
+    let mut seen = 0;
+    for group in &msg.groups {
+        for attr in &group.attrs {
+            for (tag, raw) in &attr.values {
+                if *tag != ipp::T_LANGUAGE {
+                    continue;
+                }
+                seen += 1;
+                let value = String::from_utf8_lossy(raw);
+                assert!(
+                    value.len() <= 63,
+                    "{context}: '{}' carries a {}-octet language tag",
+                    attr.name,
+                    value.len()
+                );
+                assert!(
+                    value
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                    "{context}: '{}' carries {value:?}; RFC 8011 requires lowercase \
+                     language tags, so CUPS rejects mixed case like \"zh-CN\"",
+                    attr.name
+                );
+                assert!(
+                    !value.starts_with('-') && !value.ends_with('-') && !value.contains("--"),
+                    "{context}: '{}' carries the malformed tag {value:?}",
+                    attr.name
+                );
+            }
+        }
+    }
+    assert!(
+        seen > 0,
+        "{context}: no naturalLanguage attribute in the answer"
+    );
+}
+
+fn supported_languages(msg: &Msg) -> Vec<String> {
+    msg.find("generated-natural-language-supported")
+        .map(|a| {
+            a.values
+                .iter()
+                .map(|(_, v)| String::from_utf8_lossy(v).into_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn every_declared_language_follows_rfc_8011() {
+    let (_zh_daemon, zh_port) = start_daemon_with(&["--lang", "zh-CN"]);
+    let zh = printer_attributes(zh_port);
+    assert_language_values_are_ipp_compliant(&zh, "the zh-CN daemon");
+    assert_eq!(
+        attr_text(&zh, "attributes-natural-language").as_deref(),
+        Some("zh-cn"),
+        "the operation group must declare the language we answer in, lowercased"
+    );
+    assert_eq!(
+        attr_text(&zh, "natural-language-configured").as_deref(),
+        Some("zh-cn")
+    );
+    assert_eq!(
+        supported_languages(&zh),
+        vec!["zh-cn"],
+        "generated text comes in the configured language only"
+    );
+
+    let (_en_daemon, en_port) = start_daemon();
+    let en = printer_attributes(en_port);
+    assert_language_values_are_ipp_compliant(&en, "the English daemon");
+    assert_eq!(supported_languages(&en), vec!["en"]);
+}
+
+#[test]
+fn the_ipp_language_follows_the_environment_not_just_the_flag() {
+    let (_daemon, port) = start_daemon_from_env("zh-CN");
+    let msg = printer_attributes(port);
+    assert_language_values_are_ipp_compliant(&msg, "the environment-selected daemon");
+    assert_eq!(
+        attr_text(&msg, "attributes-natural-language").as_deref(),
+        Some("zh-cn")
+    );
+    assert_eq!(supported_languages(&msg), vec!["zh-cn"]);
+}
+
 #[test]
 fn ipp_responses_declare_the_language_of_their_text() {
     // The fixture printer never answers, so the state message is our text.
@@ -372,27 +474,17 @@ fn ipp_responses_declare_the_language_of_their_text() {
     let zh = printer_attributes(port);
     assert_eq!(
         attr_text(&zh, "attributes-natural-language").as_deref(),
-        Some("zh-CN")
+        Some("zh-cn")
     );
     assert_eq!(
         attr_text(&zh, "natural-language-configured").as_deref(),
-        Some("zh-CN")
+        Some("zh-cn")
     );
     assert_eq!(
         attr_text(&zh, "printer-state-message").as_deref(),
         Some("连不上真实打印机")
     );
-    let supported: Vec<String> = zh
-        .find("generated-natural-language-supported")
-        .map(|a| {
-            a.values
-                .iter()
-                .map(|(_, v)| String::from_utf8_lossy(v).into_owned())
-                .collect()
-        })
-        .unwrap_or_default();
-    assert!(supported.iter().any(|c| c == "zh-CN"), "{supported:?}");
-    assert!(supported.iter().any(|c| c == "en"), "{supported:?}");
+    assert_eq!(supported_languages(&zh), vec!["zh-cn"]);
 
     // The default daemon says the same in English and declares English.
     let (_english_daemon, english_port) = start_daemon();

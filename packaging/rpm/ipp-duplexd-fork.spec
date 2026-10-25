@@ -98,6 +98,12 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %{_userunitdir}/ipp-duplexd-fork.service
 
 %changelog
+* Sun Oct 25 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.2.1-1
+- Announce the configured language in IPP's own spelling: RFC 8011 Section
+  5.1.9 requires lowercase naturalLanguage values, and CUPS refused mixed
+  case such as zh-CN during `lpadmin -m everywhere`. The two language
+  attributes and attributes-natural-language now follow --lang and the
+  environment instead of a hardcoded list.
 * Sat Oct 24 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.2.0-1
 - Renamed the package, both binaries, the systemd unit and the configuration
   file to ipp-duplexd-fork, and added Obsoletes: ipp-duplexd so dnf replaces

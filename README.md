@@ -185,13 +185,24 @@ The status page and `GET /flip` answer in the language of the request's
 daemon's own language. The status page is the only thing that is
 per-request: the daemon logs once, in its configured language.
 
+The IPP attributes that describe a language follow the configured
+language too: `attributes-natural-language` and
+`natural-language-configured` carry it, and
+`generated-natural-language-supported` has exactly one value, because
+the generated text only comes in that one language. RFC 8011
+[Section 5.1.9][rfc8011-lang] requires these values to be all lowercase,
+so `--lang zh-CN` is announced as `zh-cn`; a mixed-case tag makes CUPS
+refuse the printer (`lpadmin -m everywhere` fails its validation), which
+is why this is a hard rule rather than a preference.
+
 What stays English on purpose:
 
 - **IPP protocol values**: attribute names and keywords
   (`job-state-reasons`, `media-needed`, `sides`, ...), the
-  `attributes-natural-language` attribute, and printer identity strings
-  that are passed through from the real printer. Clients match on these
-  strings; translating them would break the protocol.
+  `attributes-natural-language` value's *form* (always a lowercase
+  RFC 8011 tag, never our `zh-CN` spelling), and printer identity
+  strings that are passed through from the real printer. Clients match
+  on these strings; translating them would break the protocol.
 - `anonymous` / `untitled`, used as job owner/name defaults that are
   forwarded to the real printer.
 - Diagnostics of malformed IPP requests (the body of a 400 reply is a
@@ -330,5 +341,6 @@ cargo test
   `Accept-Language`.
 
 [i18n]: https://github.com/longbridge/rust-i18n
+[rfc8011-lang]: https://www.rfc-editor.org/rfc/rfc8011.html#section-5.1.9
 [upstream]: https://github.com/SamiKalliomaki/ipp-duplexd
 [repo]: https://wraindrock.github.io/ipp-duplexd-fork/

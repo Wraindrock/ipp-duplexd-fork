@@ -488,13 +488,23 @@ fn handle_ipp(ctx: &Arc<Ctx>, req: Msg) -> Msg {
             Msg::response(ipp::ERR_OP_NOT_SUPPORTED, req.request_id)
         }
     };
-    // The text attributes in a response (job-state-message,
-    // printer-state-message, printer-info, ...) are generated in the daemon's
-    // language, so say so instead of claiming English.
-    for group in resp.groups.iter_mut().filter(|g| g.tag == ipp::G_OPERATION) {
+    // The text a response carries (job-state-message, printer-state-message,
+    // printer-info, ...) is generated in the daemon's language, so declare that
+    // language instead of claiming English or echoing the real printer's claim.
+    // RFC 8011 Section 5.1.9 wants naturalLanguage values all lowercase, and
+    // CUPS refuses a printer whose values are not, so `--lang zh-CN` becomes
+    // `zh-cn` here.
+    let language = l10n::ipp_tag(lang());
+    for group in resp.groups.iter_mut() {
         for attr in group.attrs.iter_mut() {
-            if attr.name == "attributes-natural-language" {
-                *attr = Attr::str(ipp::T_LANGUAGE, "attributes-natural-language", lang());
+            if matches!(
+                attr.name.as_str(),
+                "attributes-natural-language"
+                    | "natural-language-configured"
+                    | "generated-natural-language-supported"
+            ) {
+                let name = attr.name.clone();
+                *attr = Attr::str(ipp::T_LANGUAGE, &name, &language);
             }
         }
     }
@@ -754,14 +764,19 @@ fn proxied_printer_attrs(ctx: &Ctx) -> Option<Vec<Attr>> {
 }
 
 fn fallback_printer_attrs() -> Vec<Attr> {
+    // The printer generates its text in exactly one language - the one `--lang`
+    // or IPP_DUPLEXD_FORK_LANG picked - so that is the single value of both
+    // language attributes; RFC 8011 Section 5.1.9 forbids the mixed-case
+    // spelling our catalog codes use.
+    let language = l10n::ipp_tag(lang());
     vec![
         Attr::str(ipp::T_CHARSET, "charset-configured", "utf-8"),
         Attr::str(ipp::T_CHARSET, "charset-supported", "utf-8"),
-        Attr::str(ipp::T_LANGUAGE, "natural-language-configured", lang()),
-        Attr::strs(
+        Attr::str(ipp::T_LANGUAGE, "natural-language-configured", &language),
+        Attr::str(
             ipp::T_LANGUAGE,
             "generated-natural-language-supported",
-            &l10n::codes(),
+            &language,
         ),
         Attr::strs(ipp::T_KEYWORD, "ipp-versions-supported", &["1.1", "2.0"]),
         Attr::strs(ipp::T_KEYWORD, "pdl-override-supported", &["attempted"]),

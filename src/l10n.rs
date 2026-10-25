@@ -31,6 +31,17 @@ pub fn describe_all() -> String {
 }
 
 /// "English", "简体中文", ... — the name of `code` in that language.
+/// The value an IPP `naturalLanguage` attribute may carry for this catalog
+/// code.
+///
+/// Our codes (`zh-CN`) and `--lang` use the conventional case, but RFC 8011
+/// Section 5.1.9 requires the values inside IPP attributes to be all lowercase
+/// (`zh-cn`); CUPS validates that rule and refuses a printer that gets it
+/// wrong, which is why the mapping lives here instead of at each call site.
+pub fn ipp_tag(code: &str) -> String {
+    code.to_ascii_lowercase()
+}
+
 pub fn native_name(code: &str) -> Option<&'static str> {
     CATALOG
         .iter()
@@ -233,6 +244,20 @@ pub fn compiled_locales() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ipp_tags_are_the_lowercase_form_of_the_codes() {
+        assert_eq!(ipp_tag("en"), "en");
+        assert_eq!(ipp_tag("zh-CN"), "zh-cn");
+        for code in codes() {
+            let tag = ipp_tag(code);
+            assert!(
+                tag.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "{code} became {tag}, which RFC 8011 does not allow"
+            );
+        }
+    }
 
     #[test]
     fn normalize_accepts_environment_shapes() {
