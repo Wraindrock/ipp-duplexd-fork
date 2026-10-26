@@ -213,10 +213,28 @@ colour and high contrast come along for free. (For a one-off override,
 libadwaita honours `ADW_DEBUG_COLOR_SCHEME=prefer-dark` or `prefer-light`.)
 
 Start it with no arguments (from your desktop menu, or in a terminal **without
-`sudo`**) and it opens its window: the daemon's address, what the daemon is
-doing right now, and the button that prints the backs once the stack is
-flipped. The status refreshes itself every couple of seconds. A daemon that
-isn't running yet is reported as such rather than as an error.
+`sudo`**) and it opens the manager window. Everything the command line can do
+is there, as one tree:
+
+- **Virtual printers** — one row per printer in the
+  [configuration file](#configuration-file), showing its listen address and
+  the real printer behind it. Each row has four buttons: print the backs of
+  the waiting job (the same thing as `GET /flip`), look at that printer's
+  status page, edit it, remove it. The `+` in the header adds a printer; the
+  form asks for a name, a loopback address and the real printer's `ipp://`
+  URI.
+- **Service** — what `systemctl --user` says about
+  `ipp-duplexd-fork.service`, and a button that restarts it.
+- **Settings** — the language of the window (and, after the next restart, of
+  the daemon) and the path of the file the window writes.
+- **About** — the version and the project page.
+
+Every change is validated first, written atomically to
+`~/.config/ipp-duplexd-fork/config.toml` (mode `0600`), and then handed to the
+running daemon with `POST /reload`, so adding or removing a printer takes
+effect without a restart. When no daemon answers, the window restarts the
+user service instead. A file that does not parse is reported as an error and
+is never overwritten. Closing the window never touches a running job.
 
 The same binary is what the daemon starts automatically when the odd pages are
 done:
@@ -250,8 +268,8 @@ against Fedora rawhide, so the "newest" claim is tested rather than assumed.
 The bindings are `gtk4` 0.11 and `libadwaita` 0.9; [docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md)
 records when those versions were verified.
 
-The window is deliberately small for now: printers, jobs and settings are the
-next pages to be added to the same binary. Why GTK4 + libadwaita and not
+The job list (watch the queue, cancel a job) is the next page for the same
+binary. Why GTK4 + libadwaita and not
 Relm4, Iced, Slint or a web UI is written down in
 [docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md); the vocabulary, the operation set
 and which controls are read-only versus guarded, and how the window and the
@@ -263,6 +281,43 @@ the [language settings](#languages): `--lang`, `IPP_DUPLEXD_FORK_LANG` and the
 usual `LANG`/`LC_*` variables pick the language of the labels, and the window
 asks the daemon for its status with the same `Accept-Language`, so both speak
 the same language.
+
+
+## Configuration file
+
+The manager window writes `~/.config/ipp-duplexd-fork/config.toml` (an
+`XDG_CONFIG_HOME` is honoured, and `IPP_DUPLEXD_FORK_CONFIG` overrides the
+whole path). One daemon process serves every `[[printer]]` in it, each on its
+own listen address:
+
+```toml
+[settings]
+language = "zh-CN"          # optional; defaults to the environment
+
+[[printer]]
+name = "manual-duplex"
+listen = "127.0.0.1:6632"
+real = "ipp://127.0.0.1:631/printers/laser"
+blank = "leading"           # leading, trailing or none
+settle = 10
+poll = 2
+rotate_even = 180
+auto_continue = 0           # 0 = wait for GET /flip
+gui = true
+
+[[printer]]
+name = "letter-duplex"
+listen = "127.0.0.1:6633"
+real = "ipp://192.168.1.20/ipp/print"
+```
+
+`POST /reload` re-reads the file and starts, stops or replaces listeners to
+match it (the window calls it for you, and every answer lists what changed).
+Starting the daemon with `--config PATH`, or with no arguments while the file
+exists, serves the file; the old single-printer flags and
+`~/.config/ipp-duplexd-fork.conf` keep working when there is no file, and the
+file wins over flags when both are given. Changing the language in the file
+affects the daemon's messages on its next start.
 
 
 ## Languages
@@ -413,6 +468,7 @@ cargo test
 | `--poll N` | `2` | Seconds between job-state polls of the real printer |
 | `--settle N` | `10` | Seconds to give the real printer to finish and reset after the odd pass. The backs are only sent once it reports `printer-state=idle`; if it stays busy or unreachable for `N` seconds they are sent anyway, and a transient rejection is retried. `0` sends them straight away. |
 | `--lang CODE` | from the environment | Language of the messages and the status page (`en`, `zh-CN`); see [Languages](#languages) |
+| `--config PATH` | (automatic) | Serve every `[[printer]]` from this file instead of the single printer given by flags; see [Configuration file](#configuration-file) |
 
 ## Behavior details
 
@@ -455,6 +511,9 @@ cargo test
 
 ## Limitations
 
+- The window manages `config.toml`; a setup that still runs on the legacy
+  `~/.config/ipp-duplexd-fork.conf` flags is not imported automatically — add
+  the printer once in the window and the file takes over.
 - Talks plain `ipp://` to the real printer — no TLS (`ipps://`). For
   TLS-only printers, forward via a local CUPS queue as shown above.
 - PDF jobs only (`application/pdf`), which is what CUPS sends driverless

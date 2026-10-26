@@ -2,7 +2,12 @@
 # with the same %{placeholders}). tests/i18n.rs enforces both.
 _version: 1
 
+
 # ------------------------------------------------------------------ shared
+common.save: "Save"
+common.cancel: "Cancel"
+common.remove: "Remove"
+
 
 # ---------------------------------------------- daemon: command line, startup
 daemon.usage: |
@@ -174,6 +179,31 @@ gui.window.flip_title: "Print the backs"
 gui.window.flip_subtitle: "once the stack is flipped, this continues the waiting job"
 gui.window.about_group: "About"
 gui.window.version_title: "Version"
+gui.window.printers_title: "Virtual printers"
+gui.window.add_tooltip: "Add a virtual printer"
+gui.window.edit_tooltip: "Edit this printer"
+gui.window.remove_tooltip: "Remove this printer"
+gui.window.flip_tooltip: "Print the backs of the waiting job"
+gui.window.service_title: "Service"
+gui.window.restart: "Restart"
+gui.window.settings_title: "Settings"
+gui.window.language_title: "Language"
+gui.window.config_title: "Configuration file"
+gui.window.no_printers: "No virtual printers yet"
+gui.window.no_printers_body: "Add one: choose a loopback address to listen on and the real printer behind it."
+gui.window.dialog_add: "Add a virtual printer"
+gui.window.dialog_edit: "Edit %{name}"
+gui.window.field_name: "Name"
+gui.window.field_listen: "Listen address"
+gui.window.field_real: "Real printer (ipp://...)"
+gui.window.row_detail: "%{listen} → %{real}"
+gui.window.remove_title: "Remove %{name}?"
+gui.window.remove_body: "The virtual printer is removed from the configuration; jobs still waiting on it end with it."
+gui.window.saved: "Saved"
+gui.window.save_failed: "Not saved: %{err}"
+gui.window.restarted: "Service restarted"
+gui.window.restart_failed: "Could not restart the service: %{err}"
+gui.window.service_missing: "No systemd user service; the window could not start the daemon"
 gui.window.unreachable: "not reachable at %{addr} (%{err})"
 
 # ---------------------------------------------------------- setup wizard

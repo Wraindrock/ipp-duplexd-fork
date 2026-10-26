@@ -356,6 +356,14 @@ impl Daemon {
 
     /// Re-read the configuration file and apply it.
     fn reload(&mut self) {
+        // Started from flags with no file: the window may have written one
+        // since, and reload is exactly the moment to adopt it.
+        if self.file.is_none() {
+            let default = cfg_file::Config::path();
+            if default.is_file() {
+                self.file = Some(default);
+            }
+        }
         let path = match self.file.clone() {
             Some(path) => path,
             None => {

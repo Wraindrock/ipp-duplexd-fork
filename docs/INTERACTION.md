@@ -97,27 +97,35 @@ test that fails without it*.
 
 ## Layout
 
+What phase A built (0.4.0):
+
 ```
 ┌──────────────────────────────────────────┐
-│ HeaderBar: title · state · [refresh]     │
-├────────────┬─────────────────────────────┤
-│ Navigation │  AdwStatusPage (empty)      │
-│  Status    │   or the job rows           │
-│  Printer   │                             │
-│  Printer   │                             │
-│  Settings  │                             │
-│  About     │                             │
-└────────────┴─────────────────────────────┘
+│ HeaderBar: title/subtitle · [+]          │
+├──────────────────────────────────────────┤
+│ Group "Virtual printers"                 │
+│  manual-duplex  127.0.0.1:6632 → ipp://… │
+│      [flip] [status] [edit] [remove]     │
+│  letter-duplex  127.0.0.1:6633 → ipp://… │
+│ Group "Service"     ipp-duplexd-fork …   │
+│ Group "Settings"    language, file path  │
+│ Group "About"       version, project     │
+└──────────────────────────────────────────┘
 ```
 
-- `AdwNavigationSplitView`, not a hand-made sidebar: on narrow windows GNOME
-  expects the sidebar to collapse into a navigation page.
-- `AdwStatusPage` for "no daemon reached", "no job waiting" and error states:
-  icon, title, description, one action. It is the only place an error is drawn
-  in full; repeated failures appear as `AdwToast` so they do not push the layout.
-- Every destructive action is an `AdwAlertDialog` with the safe response as the
-  default, matching the daemon's own dialog contract (exit code 0 means "go",
-  anything else means "not now").
+- A `PreferencesPage` of stock `PreferencesGroup`s inside a `ToolbarView` in a
+  `ToastOverlay`. GNOME's own settings applications are shaped exactly this
+  way, and every row is a widget libadwaita already draws — nothing here is
+  hand-painted, so light/dark, accent colour, fonts and RTL come along.
+- The rows are rebuilt from the configuration after every change, so the screen
+  can never disagree with the file. `AdwToast` carries the result; errors never
+  push the layout around.
+- The editor is an `AdwAlertDialog` whose `extra_child` is a boxed `ListBox` of
+  `AdwEntryRow`s; validation runs on a clone of the configuration, and only a
+  valid candidate replaces it. Removal is an `AdwAlertDialog` with the
+  destructive response *not* as the default.
+- `AdwNavigationSplitView` becomes the right frame once the job list exists
+  (phase B below), because then there is more than one page to navigate.
 - The window follows the desktop's light/dark scheme through libadwaita; there is
   no theme setting, and the AppImage ships no toolkit of its own, so the style is
   whatever GNOME the program meets.
@@ -142,16 +150,23 @@ test that fails without it*.
 - No remote control: the daemon listens on loopback only, and the window talks to
   the same loopback address.
 - No bundled theme or custom design language; GNOME's is the design.
-- No editing of the daemon's configuration from the window (the wizard owns it),
-  and no background service of our own.
+- No editing of the daemon's *runtime* state or of its job queue from the window;
+  it edits the configuration file (through the same validator the daemon uses)
+  and asks the daemon to re-read it. The wizard still owns the legacy
+  `ipp-duplexd-fork.conf`; both fronts write files, neither keeps its own copy
+  of the truth. No background service of our own.
 - No TUI re-implementation: the terminal front is the daemon plus the wizard, and
   it is the reference the window is written against.
 
 ## Phases
 
-- **A (now)** — rebuild the current single page as the split view above, with the
-  status page, the refresh action and the toast, in code.
-- **B** — move the pages into Blueprint templates (`.blp`) once their content is
-  stable, which is how GNOME applications keep their UI reviewable.
-- **C** — the job list (cancel, per-job detail) and the settings page, each only
-  after the daemon has the matching operation.
+- **A (done, 0.4.0)** — the manager window as the page above: printers with
+  print-the-backs/status/edit/remove, adding, the service row, the language and
+  file-path settings, the about group, and every change saved through
+  `src/config.rs` then applied with `POST /reload` (service restart when no
+  daemon answers).
+- **B** — `AdwNavigationSplitView` plus Blueprint templates (`.blp`) once the job
+  list makes the window multi-page; that is how GNOME applications keep their UI
+  reviewable.
+- **C** — the job list (cancel, per-job detail) and the per-printer settings, each
+  only after the daemon has the matching operation.

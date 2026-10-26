@@ -109,6 +109,13 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 
 %changelog
 
+* Tue Oct 27 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.4.0-1
+- One daemon serves several virtual printers from
+  ~/.config/ipp-duplexd-fork/config.toml, re-read on POST /reload, and the
+  manager window owns every operation: add, edit and remove printers, print the
+  backs, inspect a printer's status, restart the user service and choose the
+  language.
+
 * Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.4-1
 - Build against the newest official GTK4 and libadwaita bindings (gtk4 0.11,
   libadwaita 0.9), with a gui-newest feature for the GTK 4.24 / libadwaita 1.10

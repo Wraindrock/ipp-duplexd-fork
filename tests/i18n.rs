@@ -117,7 +117,7 @@ fn looks_like_a_key(piece: &str) -> bool {
     !is_file_name
         && matches!(
             piece.split('.').next(),
-            Some("daemon") | Some("setup") | Some("gui") | Some("config")
+            Some("daemon") | Some("setup") | Some("gui") | Some("config") | Some("common")
         )
         && piece
             .chars()

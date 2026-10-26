@@ -160,6 +160,33 @@ pub struct WindowLabels {
     pub flip_subtitle: String,
     pub about_group: String,
     pub version_title: String,
+    pub printers_title: String,
+    pub add_tooltip: String,
+    pub edit_tooltip: String,
+    pub remove_tooltip: String,
+    pub flip_tooltip: String,
+    pub service_title: String,
+    pub restart: String,
+    pub settings_title: String,
+    pub language_title: String,
+    pub config_title: String,
+    pub no_printers: String,
+    pub no_printers_body: String,
+    pub dialog_add: String,
+    pub dialog_edit: String,
+    pub field_name: String,
+    pub field_listen: String,
+    pub field_real: String,
+    pub save: String,
+    pub cancel: String,
+    pub remove_title: String,
+    pub remove_body: String,
+    pub remove: String,
+    pub saved: String,
+    pub save_failed: String,
+    pub restarted: String,
+    pub restart_failed: String,
+    pub service_missing: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -175,7 +202,93 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         flip_subtitle: text("gui.window.flip_subtitle"),
         about_group: text("gui.window.about_group"),
         version_title: text("gui.window.version_title"),
+        printers_title: text("gui.window.printers_title"),
+        add_tooltip: text("gui.window.add_tooltip"),
+        edit_tooltip: text("gui.window.edit_tooltip"),
+        remove_tooltip: text("gui.window.remove_tooltip"),
+        flip_tooltip: text("gui.window.flip_tooltip"),
+        service_title: text("gui.window.service_title"),
+        restart: text("gui.window.restart"),
+        settings_title: text("gui.window.settings_title"),
+        language_title: text("gui.window.language_title"),
+        config_title: text("gui.window.config_title"),
+        no_printers: text("gui.window.no_printers"),
+        no_printers_body: text("gui.window.no_printers_body"),
+        dialog_add: text("gui.window.dialog_add"),
+        dialog_edit: text("gui.window.dialog_edit"),
+        field_name: text("gui.window.field_name"),
+        field_listen: text("gui.window.field_listen"),
+        field_real: text("gui.window.field_real"),
+        save: text("common.save"),
+        cancel: text("common.cancel"),
+        remove_title: text("gui.window.remove_title"),
+        remove_body: text("gui.window.remove_body"),
+        remove: text("common.remove"),
+        saved: text("gui.window.saved"),
+        save_failed: text("gui.window.save_failed"),
+        restarted: text("gui.window.restarted"),
+        restart_failed: text("gui.window.restart_failed"),
+        service_missing: text("gui.window.service_missing"),
     }
+}
+
+/// The next free loopback address for a new virtual printer. The manager
+/// starts at the documented default and walks upwards, so adding a second
+/// printer does not collide with the first one.
+pub fn default_listen(used: &[String]) -> String {
+    for offset in 0..64 {
+        let candidate = format!("127.0.0.1:{}", 6632 + offset);
+        if !used.contains(&candidate) {
+            return candidate;
+        }
+    }
+    format!(
+        "127.0.0.1:{}",
+        DEFAULT_DAEMON.rsplit(':').next().unwrap_or("6632")
+    )
+}
+
+/// "127.0.0.1:6632 → ipp://127.0.0.1:631/printers/laser", for a printer row.
+pub fn row_detail(locale: &str, listen: &str, real: &str) -> String {
+    l10n::tr(
+        locale,
+        "gui.window.row_detail",
+        &[("listen", listen.to_string()), ("real", real.to_string())],
+    )
+}
+
+/// POST with an empty body — the daemon's `/reload`.
+pub fn http_post(addr: &str, path: &str, lang: &str) -> Result<String, String> {
+    let mut stream = TcpStream::connect(addr).map_err(|e| e.to_string())?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(3)));
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {addr}\r\nAccept-Language: {lang}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&raw);
+    let (head, body) = match text.split_once("\r\n\r\n") {
+        Some(parts) => parts,
+        None => return Err("the daemon sent no complete HTTP response".to_string()),
+    };
+    let status = head.lines().next().unwrap_or_default();
+    if !status.contains(" 200") {
+        return Err(format!("the daemon answered {status}"));
+    }
+    Ok(body.trim().to_string())
+}
+
+/// Tell every listening printer to re-read the configuration file. Returns how
+/// many answered; zero means the daemon is not running.
+pub fn reload_everywhere(addrs: &[String], lang: &str) -> usize {
+    addrs
+        .iter()
+        .filter(|addr| http_post(addr, "/reload", lang).is_ok())
+        .count()
 }
 
 pub fn unreachable(locale: &str, addr: &str, err: &str) -> String {
@@ -232,6 +345,24 @@ mod tests {
 
     fn args(list: &[&str]) -> Result<Args, String> {
         parse_args(list.iter().map(|s| s.to_string()), l10n::FALLBACK, None)
+    }
+
+    #[test]
+    fn a_new_printer_gets_the_next_free_loopback_address() {
+        assert_eq!(default_listen(&[]), "127.0.0.1:6632");
+        assert_eq!(
+            default_listen(&["127.0.0.1:6632".to_string()]),
+            "127.0.0.1:6633"
+        );
+        assert_eq!(
+            default_listen(&["127.0.0.1:6632".to_string(), "127.0.0.1:6633".to_string()]),
+            "127.0.0.1:6634"
+        );
+        // An address nobody uses is still not offered twice.
+        assert_eq!(
+            default_listen(&["192.0.2.7:6632".to_string()]),
+            "127.0.0.1:6632"
+        );
     }
 
     #[test]

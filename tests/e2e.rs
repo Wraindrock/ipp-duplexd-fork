@@ -825,6 +825,57 @@ fn one_daemon_serves_two_virtual_printers() {
 }
 
 #[test]
+fn a_running_daemon_adopts_a_configuration_file_written_later() {
+    // The window writes config.toml, but a daemon started from the legacy
+    // flags had no file when it started: reload must notice the file and
+    // serve it, or the manager would save settings nothing ever reads.
+    let dir = TestDir::new("adopt-config");
+    let (mock_legacy, _received_legacy) = start_mock();
+    let (mock_window, _received_window) = start_mock();
+    let config = dir.path("config.toml");
+    let log = dir.path("daemon.log");
+
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-fork"));
+    let _daemon = Daemon(
+        cmd.args([
+            "--printer",
+            &format!("ipp://127.0.0.1:{mock_legacy}/print"),
+            "--listen",
+            "127.0.0.1:0",
+            "--poll",
+            "1",
+        ])
+        .env("IPP_DUPLEXD_FORK_LANG", "en")
+        .env("IPP_DUPLEXD_FORK_CONFIG", config.to_str().unwrap())
+        .stderr(Stdio::from(std::fs::File::create(&log).unwrap()))
+        .spawn()
+        .expect("failed to start ipp-duplexd-fork"),
+    );
+
+    let legacy = wait_for_printer(&log, "manual-duplex", Duration::from_secs(5));
+    assert!(http_get(legacy, "/").contains("'manual-duplex'"));
+
+    // the window saves a file while the daemon runs
+    write_config(&config, &[("window-added", mock_window)]);
+    assert!(reload(legacy).contains("reloaded"));
+
+    let added = wait_for_printer(&log, "window-added", Duration::from_secs(5));
+    assert!(http_get(added, "/").contains("'window-added'"));
+
+    // the legacy printer is not in the file, so its listener is gone
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut closed = false;
+    while Instant::now() < deadline {
+        if TcpStream::connect(("127.0.0.1", legacy)).is_err() {
+            closed = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(closed, "the legacy printer should stop listening");
+}
+
+#[test]
 fn reload_picks_up_added_and_removed_printers() {
     let dir = TestDir::new("reload");
     let (mock_a, _received_a) = start_mock();
