@@ -5,7 +5,8 @@
 > everywhere else, build a package locally with the scripts in
 > [Packages](#packages).
 
-A small Rust daemon (one dependency, [rust-i18n][i18n]) that turns any
+A small Rust daemon (one dependency, [rust-i18n][i18n], plus an optional
+GTK4 + [libadwaita][adw] front end) that turns any
 simplex printer into a manual duplex printer. It is itself an IPP printer, listening on
 `127.0.0.1` only. Print to it; it prints the **odd pages** on the real
 printer, pauses so you can flip the stack and feed it back in, then prints
@@ -149,15 +150,58 @@ work and TLS printers work too.
 
 Print to the virtual queue like to any other printer (or `lp -d
 laser-duplex file.pdf`). The odd pages come out first; then the job
-stops with `media-needed` and a desktop dialog opens. Flip the printed
-stack, reload it, and confirm the dialog — the backs print. Without a
-dialog (or from a script) the same is done with:
+stops with `media-needed` and a desktop dialog opens (the GTK4 window
+shipped with the packages; see [Desktop dialog](#desktop-dialog-gtk4)
+for the fallbacks). Flip the printed stack, reload it, and confirm the
+dialog — the backs print. Without a dialog (or from a script) the same is
+done with:
 
 ```sh
 curl http://127.0.0.1:6632/flip
 ```
 
 `GET http://127.0.0.1:6632/` shows job status.
+
+## Desktop dialog (GTK4)
+
+The flip confirmation is a GTK4 window built with
+[libadwaita][adw] (GNOME's GTK4 application framework), `ipp-duplexd-fork-gui`,
+shipped in the Arch, Debian and RPM packages. Because it is a regular
+libadwaita application it follows the desktop's **light/dark colour scheme
+automatically** — there is no theme setting in ipp-duplexd-fork, and accent
+colour and high contrast come along for free. (For a one-off override,
+libadwaita honours `ADW_DEBUG_COLOR_SCHEME=prefer-dark` or `prefer-light`.)
+
+The daemon starts it automatically when the odd pages are done:
+
+```sh
+ipp-duplexd-fork-gui --flip "report.pdf [odd pages]" --lang zh-CN
+```
+
+The exit code is the answer: **0** prints the backs, **1** leaves the job
+waiting, **2** means the dialog could not run (no display) and the daemon
+keeps waiting for `GET /flip`. Closing the window or pressing Escape is
+"not yet", so a stumbled dialog can never cancel a print job.
+
+If the GUI binary is missing (a build without the feature) or cannot start,
+the daemon falls back to `zenity`, then `kdialog`, then `xmessage`, and
+finally to plain `GET /flip`.
+
+The GTK4 part is an optional Cargo feature, so the daemon itself still
+builds anywhere without GTK4 headers:
+
+```sh
+cargo build --release                 # daemon + setup wizard, no GTK4
+cargo build --release --features gui  # adds ipp-duplexd-fork-gui
+```
+
+The dialog is also the first piece of the manager window (printers, jobs,
+settings); that window will grow in the same binary. Why GTK4 + libadwaita and
+not Relm4, Iced, Slint or a web UI is written down in
+[docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md). The daemon and the
+dialog share the [language settings](#languages): `--lang` is passed along,
+so the button labels match the rest of the messages.
+
 
 ## Languages
 
@@ -234,6 +278,15 @@ cargo build --release
 ./target/release/ipp-duplexd-fork --printer ipp://127.0.0.1:631/printers/laser
 ```
 
+Building the GTK4 dialog as well needs the GTK4 and libadwaita development
+files (`libgtk-4-dev libadwaita-1-dev` on Debian/Ubuntu, `gtk4-devel
+libadwaita-devel` on Fedora, `gtk4 libadwaita` on Arch); at runtime the
+packages pull in `libgtk-4-1`/`gtk4` and `libadwaita-1-0`/`libadwaita`:
+
+```sh
+cargo build --release --features gui
+```
+
 For permanent use, set it up as described in [Setup](#setup) above
 (`ipp-duplexd-fork-setup` is built alongside as `target/release/ipp-duplexd-fork-setup`,
 and writes the user unit for you if the packaged one is absent).
@@ -266,6 +319,11 @@ sources, and runs both binaries to check that a requested language is
 actually used (usage text, setup wizard, status page, `/flip`,
 `Content-Language`).
 
+`tests/gui.rs` (and the unit tests in `src/gui.rs`) cover the dialog's
+command line and its exit-code contract without a display; with
+`cargo test --features gui` the dialog binary is built too, and CI drives
+its real widgets under Xvfb.
+
 `tests/e2e.rs` is an end-to-end suite (`cargo test`): each test starts
 its own ipp-duplexd-fork and a mock IPP printer in place of the real one (on
 kernel-assigned ports, so they run in parallel) and plays CUPS as the
@@ -288,9 +346,10 @@ cargo test
 | `--name NAME` | `manual-duplex` | Printer name to advertise |
 | `--blank WHERE` | `leading` | Blank-page padding of the even pass for odd page counts: `leading`, `trailing`, `none`. Switch if the last page of odd-count documents lands on the wrong sheet. |
 | `--auto-continue N` | off | Print the backs N seconds after the odd pass finishes instead of waiting for `/flip` (takes precedence over `--gui`) |
-| `--no-gui` | (gui on) | Disable the flip dialog. By default a desktop dialog (zenity, kdialog, or xmessage — first one found) opens when it is time to flip; clicking OK prints the backs. `/flip` keeps working in parallel; a dismissed or failed dialog never cancels the job, and without any dialog tool ipp-duplexd-fork just waits for `/flip`. |
+| `--no-gui` | (gui on) | Disable the flip dialog. By default the GTK4 window shipped with the packages (then zenity, kdialog, or xmessage — first one that runs) opens when it is time to flip; clicking OK prints the backs. `/flip` keeps working in parallel; a dismissed or failed dialog never cancels the job, and without any dialog tool ipp-duplexd-fork just waits for `/flip`. |
 | `--rotate-even 0\|180` | `180` | Rotation of the even pages; set to `0` if the backs come out upside down for your flip direction |
 | `--poll N` | `2` | Seconds between job-state polls of the real printer |
+| `--settle N` | `10` | Seconds to give the real printer to finish and reset after the odd pass. The backs are only sent once it reports `printer-state=idle`; if it stays busy or unreachable for `N` seconds they are sent anyway, and a transient rejection is retried. `0` sends them straight away. |
 | `--lang CODE` | from the environment | Language of the messages and the status page (`en`, `zh-CN`); see [Languages](#languages) |
 
 ## Behavior details
@@ -307,6 +366,12 @@ cargo test
   the real hardware's media sizes, resolutions, color modes, and so on.
   Identity, state, document formats, and `sides-supported` are overridden —
   manual duplex is what this printer adds.
+- **Settling before the backs**: a printer that has just printed the odd
+  pages is often still spinning down, or has fallen asleep; sending the
+  backs immediately is what made them vanish on USB printers. The daemon
+  waits for the real printer to report `printer-state=idle` (at most
+  `--settle` seconds) and retries the even job on transport or transient
+  server errors.
 - **Sides**: jobs with `sides=two-sided-*` (the advertised default) get the
   manual duplex treatment; `sides=one-sided` jobs pass through unchanged.
 - **Options**: job attributes (`media`, `print-quality`,
@@ -340,6 +405,7 @@ cargo test
   log use the configured language, only the HTTP status page follows
   `Accept-Language`.
 
+[adw]: https://gitlab.gnome.org/GNOME/libadwaita
 [i18n]: https://github.com/longbridge/rust-i18n
 [rfc8011-lang]: https://www.rfc-editor.org/rfc/rfc8011.html#section-5.1.9
 [upstream]: https://github.com/SamiKalliomaki/ipp-duplexd

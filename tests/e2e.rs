@@ -135,7 +135,26 @@ struct ReceivedJob {
     doc: Vec<u8>,
 }
 
+/// Knobs for the awkward-but-real printer behaviour the daemon has to cope
+/// with: a device that is still busy after job 1, and one that refuses the
+/// first attempt at job 2 with a transient server error.
+#[derive(Default)]
+struct MockKnobs {
+    /// answers left that report printer-state=processing (4) before idle
+    busy: usize,
+    /// reject the first attempt at the second print job with 0x0405 once
+    reject_next: bool,
+    /// print jobs received (including a rejected one)
+    prints: usize,
+    /// busy answers still pending when the backs arrived
+    busy_at_backs: Option<usize>,
+}
+
 fn start_mock() -> (u16, Arc<Mutex<Vec<ReceivedJob>>>) {
+    start_mock_with(Arc::new(Mutex::new(MockKnobs::default())))
+}
+
+fn start_mock_with(knobs: Arc<Mutex<MockKnobs>>) -> (u16, Arc<Mutex<Vec<ReceivedJob>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let received = Arc::new(Mutex::new(Vec::new()));
@@ -144,7 +163,7 @@ fn start_mock() -> (u16, Arc<Mutex<Vec<ReceivedJob>>>) {
         let mut next_id = 1i32;
         for stream in listener.incoming() {
             let Ok(stream) = stream else { continue };
-            let _ = serve_mock_conn(stream, &recs, &mut next_id);
+            let _ = serve_mock_conn(stream, &recs, &mut next_id, &knobs);
         }
     });
     (port, received)
@@ -154,6 +173,7 @@ fn serve_mock_conn(
     stream: TcpStream,
     recs: &Arc<Mutex<Vec<ReceivedJob>>>,
     next_id: &mut i32,
+    knobs: &Arc<Mutex<MockKnobs>>,
 ) -> std::io::Result<()> {
     let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
@@ -188,7 +208,7 @@ fn serve_mock_conn(
                     ),
                     Attr::strs(ipp::T_KEYWORD, "sides-supported", &["one-sided"]),
                     Attr::str(ipp::T_NAME, "printer-name", "real-laser"),
-                    Attr::int(ipp::T_ENUM, "printer-state", 3),
+                    Attr::int(ipp::T_ENUM, "printer-state", printer_state(knobs)),
                     Attr::str(ipp::T_KEYWORD, "printer-state-reasons", "none"),
                     Attr::boolean("printer-is-accepting-jobs", true),
                 ],
@@ -197,6 +217,31 @@ fn serve_mock_conn(
         ipp::OP_PRINT_JOB => {
             let id = *next_id;
             *next_id += 1;
+            let accepted = {
+                let mut k = knobs.lock().unwrap();
+                k.prints += 1;
+                if k.prints == 2 && k.reject_next {
+                    k.reject_next = false;
+                    false
+                } else {
+                    if k.prints == 2 {
+                        k.busy_at_backs = Some(k.busy);
+                    }
+                    true
+                }
+            };
+            if !accepted {
+                // server-error-busy: the class the daemon must retry
+                resp.op_status = 0x0405;
+                let body = resp.encode();
+                write!(
+                    writer,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/ipp\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )?;
+                writer.write_all(&body)?;
+                return Ok(());
+            }
             recs.lock().unwrap().push(ReceivedJob {
                 name: req
                     .find("job-name")
@@ -239,6 +284,17 @@ fn serve_mock_conn(
 }
 
 // ------------------------------------------------------------- ipp client
+
+/// 3 = idle, 4 = processing while the knobs say the printer is still busy.
+fn printer_state(knobs: &Arc<Mutex<MockKnobs>>) -> i32 {
+    let mut k = knobs.lock().unwrap();
+    if k.busy > 0 {
+        k.busy -= 1;
+        4
+    } else {
+        3
+    }
+}
 
 fn ipp_call(port: u16, msg: &Msg) -> Msg {
     let uri = ipp::parse_uri(&format!("ipp://127.0.0.1:{port}/ipp/print")).unwrap();
@@ -396,6 +452,18 @@ struct Setup {
     received: Arc<Mutex<Vec<ReceivedJob>>>,
     port: u16,
     _daemon: Daemon,
+}
+
+fn setup_with_knobs(name: &str, extra: &[&str], knobs: Arc<Mutex<MockKnobs>>) -> Setup {
+    let dir = TestDir::new(name);
+    let (mock_port, received) = start_mock_with(knobs);
+    let (daemon, port) = start_daemon(mock_port, extra, None, &dir.path("ipp-duplexd-fork.log"));
+    Setup {
+        dir,
+        received,
+        port,
+        _daemon: daemon,
+    }
 }
 
 fn setup(name: &str, extra: &[&str], env_path: Option<&str>) -> Setup {
@@ -594,4 +662,72 @@ fn offline_printer_is_mirrored() {
         vec![1u8],
         "still spooling"
     );
+}
+
+/// Field report: after the odd pages the printer is still processing (or has
+/// gone to sleep), so the backs sent immediately are dropped. The daemon must
+/// wait for printer-state=idle before it sends job 2.
+#[test]
+fn the_backs_wait_for_the_printer_to_settle() {
+    let knobs = Arc::new(Mutex::new(MockKnobs {
+        busy: 6,
+        ..Default::default()
+    }));
+    let t = setup_with_knobs(
+        "settle",
+        &["--no-gui", "--settle", "30", "--poll", "1"],
+        knobs.clone(),
+    );
+    let jid = print_job(
+        t.port,
+        &make_pdf(4),
+        "doc4-settle",
+        vec![Attr::str(ipp::T_KEYWORD, "sides", "two-sided-long-edge")],
+    );
+    wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
+    assert!(http_get(t.port, "/flip").contains("printing the backs"));
+    wait_job_state(t.port, jid, &[9], Duration::from_secs(30));
+
+    let k = knobs.lock().unwrap();
+    assert_eq!(k.prints, 2, "one job per side");
+    assert_eq!(
+        k.busy_at_backs,
+        Some(0),
+        "the backs were sent while the printer still reported processing"
+    );
+    drop(k);
+    assert_eq!(t.received.lock().unwrap().len(), 2);
+}
+
+/// The second job can also bounce once with a transient server error while
+/// the device wakes up; that must be retried, not turned into a failed job.
+#[test]
+fn a_busy_printer_still_gets_the_backs() {
+    let knobs = Arc::new(Mutex::new(MockKnobs {
+        reject_next: true,
+        ..Default::default()
+    }));
+    let t = setup_with_knobs(
+        "busy",
+        &["--no-gui", "--settle", "0", "--poll", "1"],
+        knobs.clone(),
+    );
+    let jid = print_job(
+        t.port,
+        &make_pdf(4),
+        "doc4-busy",
+        vec![Attr::str(ipp::T_KEYWORD, "sides", "two-sided-long-edge")],
+    );
+    wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
+    assert!(http_get(t.port, "/flip").contains("printing the backs"));
+    wait_job_state(t.port, jid, &[9], Duration::from_secs(30));
+
+    assert_eq!(
+        knobs.lock().unwrap().prints,
+        3,
+        "the rejected attempt must be retried, not dropped"
+    );
+    let r = t.received.lock().unwrap();
+    assert_eq!(r.len(), 2, "odd + even documents actually printed");
+    assert_eq!(r[1].name, "doc4-busy [even pages]");
 }

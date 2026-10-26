@@ -82,9 +82,15 @@ fn no_key_is_unused() {
 /// Every string literal in the sources that looks like a catalog key.
 fn key_literals() -> BTreeSet<String> {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = vec![src.join("main.rs"), src.join("l10n.rs")];
-    for entry in std::fs::read_dir(src.join("bin")).unwrap() {
-        files.push(entry.unwrap().path());
+    let mut files = Vec::new();
+    // every source file, so a key added next to a new module is checked too
+    for dir in [src.clone(), src.join("bin")] {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "rs") {
+                files.push(path);
+            }
+        }
     }
     let mut found = BTreeSet::new();
     for file in files {
@@ -104,10 +110,12 @@ fn key_literals() -> BTreeSet<String> {
 }
 
 fn looks_like_a_key(piece: &str) -> bool {
-    matches!(piece.split('.').next(), Some("daemon") | Some("setup"))
-        && piece
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_')
+    matches!(
+        piece.split('.').next(),
+        Some("daemon") | Some("setup") | Some("gui")
+    ) && piece
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_')
         && piece.matches('.').count() >= 1
 }
 

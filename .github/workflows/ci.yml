@@ -29,7 +29,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       # PKGBUILD is not checked: it relies on makepkg-provided variables and
       # functions that shellcheck cannot know about.
@@ -50,7 +50,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build dependencies
-        run: dnf -y install cargo rust rpm-build make tar gzip qpdf createrepo_c && dnf -y clean all
+        run: dnf -y install cargo rust rpm-build make tar gzip qpdf createrepo_c gtk4-devel libadwaita-devel && dnf -y clean all
 
       - uses: actions/checkout@v4
 
@@ -105,3 +105,53 @@ jobs:
                  --setopt=ipp-duplexd-fork.gpgcheck=0 install ipp-duplexd-fork
           rpm -q ipp-duplexd-fork
           ipp-duplexd-fork --lang zh-CN 2>&1 | grep -q '必须指定 --printer'
+
+  # The GTK4 front end is an optional feature, so it gets its own job: the
+  # default build above stays dependency-free, and this one proves the dialog
+  # compiles and answers correctly under a headless X server.
+  gui:
+    name: GTK4 dialog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK4, Xvfb and qpdf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev xvfb qpdf
+
+      - name: Clippy
+        run: cargo clippy --all-targets --features gui -- -D warnings
+
+      - name: Build
+        run: cargo build --features gui
+
+      - name: Test
+        run: cargo test --features gui
+
+      # The daemon reads the dialog's exit code: zero means "print the backs",
+      # anything else leaves the job waiting. Drive the real widgets under
+      # Xvfb through the test hook.
+      - name: The dialog's exit code is the answer
+        run: |
+          set -eux
+          xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=accept \
+            ./target/debug/ipp-duplexd-fork-gui --flip "demo [odd pages]" --lang zh-CN
+          if xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=decline \
+            ./target/debug/ipp-duplexd-fork-gui --flip "demo [odd pages]"; then
+            echo "declining must not exit 0" >&2
+            exit 1
+          else
+            test $? -eq 1
+          fi
+
+      # No display: the daemon must not mistake that for a confirmation.
+      - name: Without a display the dialog says so and exits 2
+        run: |
+          set +e
+          out=$(env -u DISPLAY -u WAYLAND_DISPLAY ./target/debug/ipp-duplexd-fork-gui --flip demo 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          test "$code" -eq 2
+          grep -q "GET /flip" <<<"$out"

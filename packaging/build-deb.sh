@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 arch=$(dpkg --print-architecture 2>/dev/null || echo amd64)
 
-cargo build --release --locked
+cargo build --release --locked --features gui
 
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
@@ -15,6 +15,7 @@ chmod 755 "$stage"
 
 install -Dm755 target/release/ipp-duplexd-fork "$stage/usr/bin/ipp-duplexd-fork"
 install -Dm755 target/release/ipp-duplexd-fork-setup "$stage/usr/bin/ipp-duplexd-fork-setup"
+install -Dm755 target/release/ipp-duplexd-fork-gui "$stage/usr/bin/ipp-duplexd-fork-gui"
 install -Dm644 packaging/ipp-duplexd-fork.service "$stage/usr/lib/systemd/user/ipp-duplexd-fork.service"
 install -Dm644 packaging/ipp-duplexd-fork.conf.example "$stage/usr/share/doc/ipp-duplexd-fork/ipp-duplexd-fork.conf.example"
 install -Dm644 README.md "$stage/usr/share/doc/ipp-duplexd-fork/README.md"
@@ -44,8 +45,8 @@ Version: $ver-1
 Section: net
 Priority: optional
 Architecture: $arch
-Depends: qpdf, libc6
-Suggests: cups-client, zenity
+Depends: qpdf, libc6, libgtk-4-1, libadwaita-1-0 (>= 1.5)
+Suggests: cups-client
 Installed-Size: $(du -sk "$stage" --exclude=DEBIAN | cut -f1)
 Maintainer: Sami Kalliomäki <sami@kalliomaki.me>
 Description: Manual duplex printing via a loopback virtual IPP printer

@@ -32,6 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install GTK4 headers
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+
       - name: Build .deb
         run: ./packaging/build-deb.sh
 
@@ -48,7 +51,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install build dependencies
-        run: pacman -Syu --noconfirm --needed rust qpdf git
+        run: pacman -Syu --noconfirm --needed rust qpdf git gtk4 libadwaita
 
       - uses: actions/checkout@v4
 
@@ -75,7 +78,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build dependencies
-        run: dnf -y install cargo rust rpm-build tar gzip qpdf && dnf -y clean all
+        run: dnf -y install cargo rust rpm-build tar gzip qpdf gtk4-devel libadwaita-devel && dnf -y clean all
 
       - uses: actions/checkout@v4
 

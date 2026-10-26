@@ -22,7 +22,7 @@ mkdir -p "$top/BUILD" "$top/BUILDROOT" "$top/RPMS" "$top/SOURCES" "$top/SPECS" "
 # same file list as the Arch tarball; locales/ is needed at compile time
 tar czf "$top/SOURCES/ipp-duplexd-fork.tar.gz" \
     --transform "s,^,ipp-duplexd-fork/," \
-    Cargo.toml Cargo.lock src locales README.md LICENSE \
+    Cargo.toml Cargo.lock src locales docs README.md LICENSE \
     packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
 
 # --nodeps: the BuildRequires above are what a distribution build checks;
@@ -57,6 +57,7 @@ problems=()
 has() { grep -Fxq -- "$1" <<<"$listing"; }
 has /usr/bin/ipp-duplexd-fork || problems+=("no /usr/bin/ipp-duplexd-fork")
 has /usr/bin/ipp-duplexd-fork-setup || problems+=("no /usr/bin/ipp-duplexd-fork-setup")
+has /usr/bin/ipp-duplexd-fork-gui || problems+=("no /usr/bin/ipp-duplexd-fork-gui")
 has /usr/lib/systemd/user/ipp-duplexd-fork.service || problems+=("no systemd user unit")
 # Fedora puts docs in /usr/share/doc/ipp-duplexd-fork-<version>/, other layouts use
 # a fixed /usr/share/doc/ipp-duplexd-fork/, so only the file name and the directory
@@ -66,6 +67,8 @@ grep -Eq '^/usr/share/doc/ipp-duplexd-fork[^/]*/README\.md$' <<<"$listing" \
 grep -Eq '^/usr/share/licenses/ipp-duplexd-fork[^/]*/LICENSE$' <<<"$listing" \
     || problems+=("no license")
 grep -Fxq 'qpdf' <<<"$requires" || problems+=("no qpdf dependency")
+grep -Fxq 'gtk4' <<<"$requires" || problems+=("no gtk4 dependency")
+grep -Fxq 'libadwaita' <<<"$requires" || problems+=("no libadwaita dependency")
 # the catalogs are compiled into the binaries; nothing should be installed for
 # them, and if something is, the file list and the spec drifted apart
 if grep -Eq 'locales|\.yml$' <<<"$listing"; then

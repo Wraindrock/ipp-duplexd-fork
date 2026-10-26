@@ -22,6 +22,9 @@ daemon.usage: |
                          if the backs come out upside down for your flip
                          direction)
     --poll N             seconds between job-state polls (default 2)
+    --settle N           seconds to give the real printer to settle after the
+                         odd pass before the backs are sent (default 10; it
+                         waits for printer-state=idle and gives up after N)
     --lang CODE          language of messages and the status page
                          (en, zh-CN; default from $IPP_DUPLEXD_FORK_LANG,
                          $LANGUAGE, $LC_ALL or $LANG)
@@ -29,6 +32,7 @@ daemon.err.needs_value: "%{what} needs a value"
 daemon.err.bad_auto_continue: "bad --auto-continue"
 daemon.err.bad_rotate_even: "bad --rotate-even"
 daemon.err.bad_poll: "bad --poll"
+daemon.err.bad_settle: "bad --settle"
 daemon.err.unknown_arg: "unknown argument '%{arg}'"
 daemon.err.bad_blank: "--blank must be trailing, leading or none"
 daemon.err.bad_rotate_value: "--rotate-even must be 0 or 180"
@@ -56,9 +60,11 @@ daemon.log.job_failed: "job %{id} failed: %{err}"
 daemon.log.job_summary: "job %{id} '%{name}': %{pages} pages, manual duplex"
 daemon.log.job_odd_done: "job %{id}: odd pages done. %{message}"
 daemon.log.job_completed: "job %{id} completed"
+daemon.log.settle_timeout: "the real printer did not report idle within %{secs}s; sending the backs anyway"
 daemon.log.no_dialog: "no dialog tool found (tried zenity, kdialog, xmessage); waiting for GET /flip"
 daemon.log.dialog_opened: "flip dialog opened via %{bin}"
 daemon.log.dialog_dismissed: "flip dialog dismissed; still waiting for GET /flip"
+daemon.log.dialog_failed: "%{bin} could not open a window; trying the next dialog tool"
 daemon.log.qpdf_output: "qpdf %{args}: %{output}"
 
 # ------------------------------------------------------------- daemon: HTTP
@@ -84,6 +90,7 @@ daemon.state.unknown: "unknown"
 # ---------------------------------------------------- daemon: job progress
 daemon.job.preparing: "preparing"
 daemon.job.printing_odd: "printing odd pages"
+daemon.job.waiting_settle: "waiting for the printer to settle"
 daemon.job.printing_even: "printing even pages"
 daemon.job.pass_through: "printing (pass-through)"
 daemon.job.done: "done"
@@ -105,6 +112,28 @@ daemon.attr.make_and_model: "%{make} + manual duplex"
 daemon.dialog.text: "%{job}: odd pages printed.\nFlip the stack and reload it, then click OK to print the backs."
 daemon.dialog.ok: "OK, print backs"
 daemon.dialog.not_yet: "Not yet"
+
+# ------------------------------------------------------- daemon: the GUI
+# The GTK4 front end (--features gui) reuses the dialog text above; these are
+# its own command line and failure messages.
+gui.usage: |
+  ipp-duplexd-fork-gui - the desktop front end.
+
+  Usage:
+    ipp-duplexd-fork-gui --flip JOB [--lang CODE]
+
+  --flip JOB   ask whether the stack was flipped; exit 0 prints the backs,
+               exit 1 leaves the job waiting for GET /flip
+  --lang CODE  language of the dialog (default: from the environment)
+  --version    print the version
+  --help       print this help
+
+  The manager window (printers, jobs, settings) is the next thing to be built
+  on top of this dialog.
+gui.err.needs_value: "%{what} needs a value"
+gui.err.unknown_arg: "unknown argument '%{arg}'"
+gui.err.bad_lang: "bad language '%{lang}'; known languages: %{list}"
+gui.err.no_display: "cannot open a display (%{err}); the daemon keeps waiting for GET /flip"
 
 # ---------------------------------------------------------- setup wizard
 setup.usage: |

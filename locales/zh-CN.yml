@@ -21,12 +21,15 @@ daemon.usage: |
     --rotate-even 0|180  把偶数页旋转 180 度（默认 180；如果按你的翻面
                          方向背面出来是倒着的，就改成 0）
     --poll N             查询真实打印机作业状态的间隔秒数（默认 2）
+    --settle N           奇数页打印完后等真实打印机恢复的秒数（默认 10；
+                         期间等打印机空闲，超时就直接送偶数页）
     --lang CODE          消息与状态页的语言（en、zh-CN；默认取自
                          $IPP_DUPLEXD_FORK_LANG、$LANGUAGE、$LC_ALL 或 $LANG）
 daemon.err.needs_value: "%{what} 缺少取值"
 daemon.err.bad_auto_continue: "--auto-continue 取值无效"
 daemon.err.bad_rotate_even: "--rotate-even 取值无效"
 daemon.err.bad_poll: "--poll 取值无效"
+daemon.err.bad_settle: "--settle 取值无效"
 daemon.err.unknown_arg: "无法识别的参数 '%{arg}'"
 daemon.err.bad_blank: "--blank 只能是 trailing、leading 或 none"
 daemon.err.bad_rotate_value: "--rotate-even 只能是 0 或 180"
@@ -54,9 +57,11 @@ daemon.log.job_failed: "作业 %{id} 失败：%{err}"
 daemon.log.job_summary: "作业 %{id}“%{name}”：共 %{pages} 页，手动双面"
 daemon.log.job_odd_done: "作业 %{id}：奇数页打完了。%{message}"
 daemon.log.job_completed: "作业 %{id} 已完成"
+daemon.log.settle_timeout: "真实打印机 %{secs} 秒内没有报告空闲，仍然继续打印背面"
 daemon.log.no_dialog: "没找到对话框工具（试过 zenity、kdialog、xmessage），改为等待 GET /flip"
 daemon.log.dialog_opened: "已用 %{bin} 弹出翻纸对话框"
 daemon.log.dialog_dismissed: "翻纸对话框被关掉了，继续等待 GET /flip"
+daemon.log.dialog_failed: "%{bin} 打不开窗口，改用下一个对话框工具"
 daemon.log.qpdf_output: "qpdf %{args}：%{output}"
 
 # ------------------------------------------------------------ 守护进程：HTTP
@@ -82,6 +87,7 @@ daemon.state.unknown: "未知"
 # ---------------------------------------------------------- 守护进程：作业进度
 daemon.job.preparing: "准备中"
 daemon.job.printing_odd: "正在打印奇数页"
+daemon.job.waiting_settle: "正在等打印机恢复"
 daemon.job.printing_even: "正在打印偶数页"
 daemon.job.pass_through: "正在打印（直通）"
 daemon.job.done: "完成"
@@ -103,6 +109,26 @@ daemon.attr.make_and_model: "%{make} + 手动双面"
 daemon.dialog.text: "%{job}：奇数页已打印。\n请翻纸并重新装好，然后点“确定”打印背面。"
 daemon.dialog.ok: "确定，打印背面"
 daemon.dialog.not_yet: "还没翻"
+
+# ------------------------------------------------------- daemon: the GUI
+# 上一段对话框文案由桌面端复用；以下只属于它自己的命令行与失败提示。
+gui.usage: |
+  ipp-duplexd-fork-gui —— 桌面端。
+
+  用法：
+    ipp-duplexd-fork-gui --flip 作业名 [--lang 语言代码]
+
+  --flip 作业名  询问纸张是否已经翻好；退出码 0 表示打印背面，
+               1 表示继续等待 GET /flip
+  --lang 语言代码  对话框使用的语言（默认取自环境变量）
+  --version    显示版本
+  --help       显示本帮助
+
+  管理窗口（打印机、作业、设置）将在这之后构建在同一个程序里。
+gui.err.needs_value: "%{what} 缺少取值"
+gui.err.unknown_arg: "无法识别的参数 '%{arg}'"
+gui.err.bad_lang: "不支持的语言 '%{lang}'；可用语言：%{list}"
+gui.err.no_display: "无法打开显示（%{err}）；守护进程会继续等待 GET /flip"
 
 # ---------------------------------------------------------------- 安装向导
 setup.usage: |

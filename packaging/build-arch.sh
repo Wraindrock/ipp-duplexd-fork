@@ -12,7 +12,7 @@ rm -f packaging/arch/ipp-duplexd-fork-*.tar.gz
 
 tar czf "packaging/arch/ipp-duplexd-fork.tar.gz" \
     --transform "s,^,ipp-duplexd-fork/," \
-    Cargo.toml Cargo.lock src locales README.md LICENSE \
+    Cargo.toml Cargo.lock src locales docs README.md LICENSE \
     packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
 
 cd packaging/arch

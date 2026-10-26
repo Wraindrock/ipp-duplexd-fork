@@ -23,7 +23,7 @@
 specfile := packaging/rpm/ipp-duplexd-fork.spec
 version  := $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml)
 distname := ipp-duplexd-fork-$(version)
-sources  := Cargo.toml Cargo.lock src locales README.md LICENSE \
+sources  := Cargo.toml Cargo.lock src locales docs README.md LICENSE \
             packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
 outdir   := $(abspath $(outdir))
 

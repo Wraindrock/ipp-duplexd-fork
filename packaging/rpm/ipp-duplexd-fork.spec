@@ -40,12 +40,14 @@ Source0:        ipp-duplexd-fork.tar.gz
 
 # the daemon shells out to qpdf, the setup wizard to lpadmin
 Requires:       qpdf
-Recommends:     zenity
+Requires:       gtk4
+Requires:       libadwaita
 Recommends:     cups-client
 BuildRequires:  cargo
 BuildRequires:  rust
 BuildRequires:  tar
 BuildRequires:  gzip
+BuildRequires:  gtk4-devel libadwaita-devel
 
 # This package used to be called ipp-duplexd; replace an installed copy of it
 # (up to the last release under the old name) instead of leaving two daemons
@@ -66,6 +68,11 @@ The package ships a systemd user unit; enable it per user with
 "systemctl --user enable --now ipp-duplexd-fork" after writing
 ~/.config/ipp-duplexd-fork.conf (see the shipped example).
 
+The flip confirmation is a GTK4 + libadwaita window (ipp-duplexd-fork-gui)
+that follows the desktop's light or dark colour scheme on its own, and falls
+back to zenity, kdialog or xmessage when it cannot run; the daemon keeps
+waiting for GET /flip either way.
+
 Messages, the setup wizard and the status page come in English and
 Simplified Chinese; the catalogs are compiled into the binaries, so this
 package installs no locale data.
@@ -78,12 +85,13 @@ package installs no locale data.
 # (the same as packaging/arch/PKGBUILD). No vendored crates here: this fetches
 # from crates.io, pinned by Cargo.lock.
 export CARGO_TARGET_DIR=target
-cargo build --release --locked
+cargo build --release --locked --features gui
 
 %install
 export CARGO_TARGET_DIR=target
 install -Dpm755 target/release/ipp-duplexd-fork %{buildroot}%{_bindir}/ipp-duplexd-fork
 install -Dpm755 target/release/ipp-duplexd-fork-setup %{buildroot}%{_bindir}/ipp-duplexd-fork-setup
+install -Dpm755 target/release/ipp-duplexd-fork-gui %{buildroot}%{_bindir}/ipp-duplexd-fork-gui
 install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/ipp-duplexd-fork.service
 
 # tests/ and %check are left out on purpose: the end-to-end suite needs qpdf
@@ -93,11 +101,18 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %files
 %license LICENSE
 %doc README.md packaging/ipp-duplexd-fork.conf.example
+%doc docs/UI-FRAMEWORK.md
 %{_bindir}/ipp-duplexd-fork
 %{_bindir}/ipp-duplexd-fork-setup
+%{_bindir}/ipp-duplexd-fork-gui
 %{_userunitdir}/ipp-duplexd-fork.service
 
 %changelog
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.0-1
+- Added a GTK4 front end, ipp-duplexd-fork-gui, which shows the "flip the
+  stack" confirmation the daemon used to borrow from zenity/kdialog/xmessage.
+  It is built with --features gui and is the first piece of the manager
+  window; the daemon still falls back to those tools and to GET /flip.
 * Sun Oct 25 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.2.1-1
 - Announce the configured language in IPP's own spelling: RFC 8011 Section
   5.1.9 requires lowercase naturalLanguage values, and CUPS refused mixed

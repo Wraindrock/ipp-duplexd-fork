@@ -13,7 +13,7 @@
 //! so the virtual printer advertises the real hardware's capabilities.
 
 use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg, PrinterUri};
-use ipp_duplexd_fork::l10n;
+use ipp_duplexd_fork::{gui, l10n};
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -44,6 +44,7 @@ struct Config {
     rotate_even: u32,   // 0 | 180
     poll: u64,          // seconds between remote job-state polls
     gui: bool,          // open a desktop dialog to confirm the flip
+    settle: u64,        // seconds to give the real printer before the backs
 }
 
 /// A job's state message.
@@ -226,6 +227,7 @@ fn config_from(argv: &[String]) -> Result<Config, String> {
     let mut rotate_even = 180u32;
     let mut poll = 2u64;
     let mut gui = true;
+    let mut settle = 10u64;
     while let Some(a) = args.next() {
         let mut val = |what: &str| {
             args.next()
@@ -251,6 +253,12 @@ fn config_from(argv: &[String]) -> Result<Config, String> {
                 rotate_even = val("--rotate-even")?
                     .parse()
                     .map_err(|_| t!("daemon.err.bad_rotate_even").to_string())?
+            }
+            "--settle" => {
+                settle = val("--settle")?
+                    .parse::<u64>()
+                    .map_err(|_| t!("daemon.err.bad_settle").to_string())?
+                    .min(600)
             }
             "--poll" => {
                 poll = val("--poll")?
@@ -289,6 +297,7 @@ fn config_from(argv: &[String]) -> Result<Config, String> {
         rotate_even,
         poll,
         gui,
+        settle,
     })
 }
 
@@ -1072,79 +1081,141 @@ impl Drop for DialogGuard {
 /// OK triggers the flip; any other outcome (Cancel, closed window, no
 /// display) just logs, so a broken GUI can never cancel a print job —
 /// GET /flip keeps working in parallel.
+/// The helper programs take their words as separate arguments; the GTK window
+/// gets the same strings through `--flip`/`--lang`.
+fn argument_list(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|part| part.to_string()).collect()
+}
+
 fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::process::Child>>>> {
     let text = t!("daemon.dialog.text", job = job).to_string();
     let ok = t!("daemon.dialog.ok").to_string();
     let not_yet = t!("daemon.dialog.not_yet").to_string();
     let buttons = format!("{ok}:101,{not_yet}:102");
-    let candidates: [(&str, Vec<&str>); 3] = [
-        (
-            "zenity",
-            vec![
-                "--question",
-                "--title",
-                "ipp-duplexd-fork",
-                "--text",
-                &text,
-                "--ok-label",
-                &ok,
-                "--cancel-label",
-                &not_yet,
-            ],
-        ),
-        (
-            "kdialog",
-            vec!["--title", "ipp-duplexd-fork", "--yesno", &text],
-        ),
-        ("xmessage", vec!["-center", "-buttons", &buttons, &text]),
+    let flip = vec![
+        "--flip".to_string(),
+        job.to_string(),
+        "--lang".to_string(),
+        lang().to_string(),
     ];
-    let mut child = None;
-    for (bin, args) in &candidates {
-        match Command::new(bin).args(args).spawn() {
-            Ok(c) => {
-                child = Some((*bin, c));
-                break;
-            }
-            Err(_) => continue,
-        }
+    // This fork's own GTK4 dialog comes first, then the desktop tools the
+    // daemon grew up with. Every candidate answers the same way: exit code
+    // zero means "the stack is flipped, print the backs" (xmessage's button
+    // code is 101). A binary that cannot run at all (no display, no GTK
+    // build) fails to spawn or exits non-zero, which is always "not yet".
+    let mut candidates: Vec<(&str, String, Vec<String>)> = Vec::new();
+    if let Some(helper) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| gui::find_helper(&exe))
+    {
+        candidates.push((
+            gui::BIN,
+            helper.to_string_lossy().into_owned(),
+            flip.clone(),
+        ));
     }
-    let Some((bin, child)) = child else {
-        log(&t!("daemon.log.no_dialog"));
-        return None;
-    };
-    log(&t!("daemon.log.dialog_opened", bin = bin));
-    let handle = Arc::new(Mutex::new(Some(child)));
+    // Installed into PATH, but not next to the daemon (or run out of a build
+    // tree): the bare name lets the shell find it.
+    candidates.push((gui::BIN, gui::BIN.to_string(), flip));
+    candidates.push((
+        "zenity",
+        "zenity".to_string(),
+        argument_list(&[
+            "--question",
+            "--title",
+            gui::NAME,
+            "--text",
+            &text,
+            "--ok-label",
+            &ok,
+            "--cancel-label",
+            &not_yet,
+        ]),
+    ));
+    candidates.push((
+        "kdialog",
+        "kdialog".to_string(),
+        argument_list(&["--title", gui::NAME, "--yesno", &text]),
+    ));
+    candidates.push((
+        "xmessage",
+        "xmessage".to_string(),
+        argument_list(&["-center", "-buttons", &buttons, &text]),
+    ));
+    let handle: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
     let h = handle.clone();
     let ctx = ctx.clone();
-    let expect_ok = move |status: std::process::ExitStatus| {
-        if bin == "xmessage" {
-            status.code() == Some(101)
-        } else {
-            status.success()
-        }
-    };
-    std::thread::spawn(move || loop {
-        {
-            let mut g = h.lock().unwrap();
-            let Some(c) = g.as_mut() else { return }; // killed by the guard
-            match c.try_wait() {
-                Ok(Some(status)) => {
-                    *g = None;
-                    if expect_ok(status) {
-                        trigger_flip(&ctx);
-                    } else {
-                        log(&t!("daemon.log.dialog_dismissed"));
+    let candidates: Arc<Vec<(&'static str, String, Vec<String>)>> = Arc::new(candidates);
+    // The dialog runs in its own thread so a dismissal cannot block the job;
+    // the daemon only reacts to the exit code.
+    std::thread::spawn(move || {
+        let mut index = 0;
+        loop {
+            // the first candidate that actually starts gets to answer
+            let mut started = None;
+            while index < candidates.len() {
+                let (display, program, args) = &candidates[index];
+                match Command::new(program).args(args).spawn() {
+                    Ok(child) => {
+                        started = Some((index, *display, child));
+                        break;
                     }
-                    return;
-                }
-                Ok(None) => {}
-                Err(_) => {
-                    *g = None;
-                    return;
+                    Err(_) => index += 1,
                 }
             }
+            let Some((at, display, child)) = started else {
+                log(&t!("daemon.log.no_dialog"));
+                *h.lock().unwrap() = None;
+                return;
+            };
+            log(&t!("daemon.log.dialog_opened", bin = display));
+            *h.lock().unwrap() = Some(child);
+            loop {
+                let status = {
+                    let mut g = h.lock().unwrap();
+                    let Some(c) = g.as_mut() else { return }; // killed by the guard
+                    match c.try_wait() {
+                        Ok(Some(status)) => {
+                            *g = None;
+                            Some(status)
+                        }
+                        Ok(None) => None,
+                        Err(_) => {
+                            *g = None;
+                            return;
+                        }
+                    }
+                };
+                let Some(status) = status else {
+                    std::thread::sleep(Duration::from_millis(300));
+                    continue;
+                };
+                // A dialog that could not even run is not a "no": a GTK
+                // window without a display, or a helper that dies on startup,
+                // falls through to the next tool instead of leaving the user
+                // with no window at all.
+                let could_not_run = match status.code() {
+                    Some(code) => display == gui::BIN && code == i32::from(gui::EXIT_NO_DISPLAY),
+                    None => true,
+                };
+                if could_not_run {
+                    log(&t!("daemon.log.dialog_failed", bin = display));
+                    index = at + 1;
+                    break;
+                }
+                let accepted = if display == "xmessage" {
+                    status.code() == Some(101)
+                } else {
+                    status.success()
+                };
+                if accepted {
+                    trigger_flip(&ctx);
+                } else {
+                    log(&t!("daemon.log.dialog_dismissed"));
+                }
+                return;
+            }
         }
-        std::thread::sleep(Duration::from_millis(300));
     });
     Some(handle)
 }
@@ -1351,6 +1422,13 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
         ctx,
         id,
         J_PROCESSING,
+        JobMessage::key("daemon.job.waiting_settle"),
+    );
+    wait_for_printer(ctx);
+    set_job_state(
+        ctx,
+        id,
+        J_PROCESSING,
         JobMessage::key("daemon.job.printing_even"),
     );
     let rid = forward(
@@ -1411,17 +1489,76 @@ fn forward(ctx: &Ctx, file: &str, name: &str, user: &str, attrs: &[Attr]) -> Res
         attrs: fwd,
     });
     msg.data = data;
-    let resp = ipp::request(&ctx.cfg.printer, &msg)?;
-    if resp.op_status > 0x00ff {
-        return Err(t!(
-            "daemon.err.remote_rejected",
-            status = format!("{:04x}", resp.op_status)
-        )
-        .to_string());
+    // A printer that has just finished job 1 often needs a moment before it
+    // takes job 2. Retry transport errors and server errors (0x04xx, the
+    // transient class); anything else is our fault, so do not loop on it.
+    let mut last = String::new();
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_secs(2));
+        }
+        match ipp::request(&ctx.cfg.printer, &msg) {
+            Ok(resp) if resp.op_status > 0x00ff => {
+                last = t!(
+                    "daemon.err.remote_rejected",
+                    status = format!("{:04x}", resp.op_status)
+                )
+                .to_string();
+                if resp.op_status >> 8 != 0x04 {
+                    return Err(last);
+                }
+            }
+            Ok(resp) => {
+                return resp
+                    .find("job-id")
+                    .and_then(|a| a.first_int())
+                    .ok_or_else(|| t!("daemon.err.remote_no_job_id").to_string());
+            }
+            Err(e) => last = t!("daemon.err.remote_lost", err = e).to_string(),
+        }
     }
-    resp.find("job-id")
-        .and_then(|a| a.first_int())
-        .ok_or_else(|| t!("daemon.err.remote_no_job_id").to_string())
+    Err(last)
+}
+
+/// The state of the real printer (3 = idle), if it answers at all.
+fn printer_state(ctx: &Ctx) -> Option<i32> {
+    let mut q = Msg::new(ipp::OP_GET_PRINTER_ATTRS, 1);
+    q.groups.push(Group {
+        tag: ipp::G_OPERATION,
+        attrs: vec![
+            Attr::str(ipp::T_CHARSET, "attributes-charset", "utf-8"),
+            Attr::str(ipp::T_LANGUAGE, "attributes-natural-language", "en"),
+            Attr::str(ipp::T_URI, "printer-uri", &ctx.cfg.printer.uri),
+            Attr::str(ipp::T_KEYWORD, "requested-attributes", "printer-state"),
+        ],
+    });
+    ipp::request(&ctx.cfg.printer, &q)
+        .ok()?
+        .find("printer-state")?
+        .first_int()
+}
+
+/// Wait for the real printer to settle before feeding it the backs.
+///
+/// A USB printer that just finished the odd pages is still processing, or has
+/// fallen asleep; sending the even pages right away is what made them vanish.
+/// Wait until it reports idle, but never longer than `--settle`: if it cannot
+/// be asked, try the backs anyway and let the retry in `forward` cope.
+fn wait_for_printer(ctx: &Ctx) {
+    if ctx.cfg.settle == 0 {
+        return;
+    }
+    let deadline = Instant::now() + Duration::from_secs(ctx.cfg.settle);
+    loop {
+        if printer_state(ctx) == Some(3) {
+            return;
+        }
+        if Instant::now() >= deadline {
+            log(&t!("daemon.log.settle_timeout", secs = ctx.cfg.settle));
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
 }
 
 fn wait_remote(ctx: &Ctx, id: i32, remote_id: i32) -> Result<(), String> {
