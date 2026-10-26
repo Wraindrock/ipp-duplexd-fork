@@ -108,6 +108,13 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %{_userunitdir}/ipp-duplexd-fork.service
 
 %changelog
+
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.4-1
+- Build against the newest official GTK4 and libadwaita bindings (gtk4 0.11,
+  libadwaita 0.9), with a gui-newest feature for the GTK 4.24 / libadwaita 1.10
+  tiers, and document the interaction design from the GNOME interface
+  guidelines instead of a third-party application.
+
 * Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.3-1
 - The AppImage no longer ships GTK4 or libadwaita: the window uses the
   desktop's own libraries, so it matches the current GNOME style instead of

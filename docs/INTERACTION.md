@@ -6,36 +6,38 @@ apart. It is the answer to three questions: which parts of the program are
 front ends, which operations exist at all, and which of those are read-only
 displays versus things the user does.
 
-## What was borrowed from Parabolic, and what was not
+## Built on the documented GNOME stack, not on a third-party blueprint
 
-[Parabolic](https://github.com/NickvisionApps/Parabolic) is a GTK4 + libadwaita
-application structured the way GNOME expects:
+The structure below is not borrowed from another application; it is what the
+official GNOME documentation prescribes for a GTK4/libadwaita program, and every
+widget named here comes from libadwaita itself:
 
-- a shared core library (`Nickvision.Parabolic.Shared`) that owns all behaviour,
-- thin front ends on top of it (`Nickvision.Parabolic.GNOME`, plus a WinUI one),
-- Blueprint source files (`.blp` compiled to `.ui`) instead of widgets built up
-  by hand, so each screen is a reviewable template,
-- stock libadwaita widgets: `AdwNavigationSplitView` for navigation,
-  `AdwStatusPage` for empty and error states, `AdwToast` for results.
+- [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/) — the
+  patterns (adaptive navigation, empty/error states, in-app notifications, safe
+  defaults for destructive actions).
+- [libadwaita documentation](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/)
+  — `AdwNavigationSplitView` for navigation, `AdwStatusPage` for empty and error
+  states, `AdwToast` (via `AdwToastOverlay`) for results, `AdwAlertDialog` for
+  decisions, `AdwPreferencesPage`/`AdwPreferencesGroup` for settings.
+- [gtk4-rs book](https://gtk-rs.org/gtk4-rs/stable/latest/book/) — the Rust
+  bindings used here.
 
-Parabolic itself is C#/.NET with [Gir.Core](https://gircore.github.io/) bindings.
-Adopting *its* framework literally would mean rewriting this fork in C#, which
-would put a .NET runtime and NuGet packages between a small printer daemon and
-its job. What is worth taking is the **architecture**, and that is what the plan
-below does in Rust, with `gtk4-rs` and `libadwaita`:
-
-| Parabolic | Here |
+| Layer | Here |
 | --- | --- |
-| `Nickvision.Parabolic.Shared` | `src/lib.rs` (`ipp`, `l10n`, GUI-side request helpers) |
-| `Nickvision.Parabolic.GNOME` | `src/bin/ipp-duplexd-fork-gui.rs` |
-| WinUI front end | daemon CLI + setup wizard (the terminal fronts) |
-| Blueprint `.blp` templates | phase B below (phase A builds the same tree in code) |
-| `AdwNavigationSplitView`, `AdwStatusPage`, `AdwToast` | the same widgets, via `gtk4-rs` |
+| Behaviour (the source of truth) | the daemon: `src/main.rs`, `src/ipp.rs` |
+| Shared vocabulary and helpers | `src/lib.rs` (`ipp`, `l10n`) and `src/gui.rs` (requests, strings, exit codes) |
+| Desktop front end | `src/bin/ipp-duplexd-fork-gui.rs` |
+| Terminal front ends | the daemon CLI and `src/bin/ipp-duplexd-fork-setup.rs` |
+| Declarative templates | phase B below (phase A builds the same tree in code) |
 
 The rule that makes this an architecture rather than a style choice: **a front
 end may only do what the core can already do, and the core is the daemon.** The
 GUI is a client of the daemon's HTTP interface; it never reads the config file,
 never talks to CUPS, and never keeps state of its own.
+
+The toolkits and bindings are always the newest official ones this project can
+package against; [docs/UI-FRAMEWORK.md](UI-FRAMEWORK.md) records the versions and
+the dates at which they were checked.
 
 ## The vocabulary is the contract
 
@@ -150,7 +152,6 @@ test that fails without it*.
 - **A (now)** — rebuild the current single page as the split view above, with the
   status page, the refresh action and the toast, in code.
 - **B** — move the pages into Blueprint templates (`.blp`) once their content is
-  stable, which is how Parabolic and most GNOME applications keep their UI
-  reviewable.
+  stable, which is how GNOME applications keep their UI reviewable.
 - **C** — the job list (cancel, per-job detail) and the settings page, each only
   after the daemon has the matching operation.

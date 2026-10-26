@@ -1,6 +1,6 @@
 [package]
 name = "ipp-duplexd-fork"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 authors = ["Sami Kalliomäki <sami@kalliomaki.me>"]
 description = "Loopback IPP printer that performs manual duplex on a real IPP printer"
@@ -9,13 +9,20 @@ repository = "https://github.com/Wraindrock/ipp-duplexd-fork"
 
 [features]
 default = []
-# The GTK4 dialog and (later) the manager window.
+# The GTK4 dialog and (later) the manager window. Built against the API tier
+# this program actually uses (libadwaita 1.5), so distributions that still ship
+# an older toolkit can package it.
 gui = ["dep:gtk4", "dep:libadwaita"]
+# Same window, compiled against the newest GTK and libadwaita API tiers
+# (GTK 4.24 / libadwaita 1.10, as shipped by GNOME 51). Needs a newer build
+# host, offers no extra behaviour today; it exists so that a build against the
+# newest official toolkit is a first-class, tested configuration.
+gui-newest = ["gui", "gtk4/v4_24", "libadwaita/v1_10"]
 
 [dependencies]
 rust-i18n = "4"
-gtk4 = { version = "0.10", optional = true }
-libadwaita = { version = "0.8", optional = true, features = ["v1_5"] }
+gtk4 = { version = "0.11", optional = true }
+libadwaita = { version = "0.9", optional = true, features = ["v1_5"] }
 
 [[bin]]
 name = "ipp-duplexd-fork"

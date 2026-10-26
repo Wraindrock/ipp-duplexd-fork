@@ -240,7 +240,15 @@ builds anywhere without GTK4 headers:
 ```sh
 cargo build --release                 # daemon + setup wizard, no GTK4
 cargo build --release --features gui  # adds ipp-duplexd-fork-gui
+cargo build --release --features gui-newest  # the same, against GTK 4.24/libadwaita 1.10
 ```
+
+`gui` needs GTK 4.10 and libadwaita 1.5, which every distribution that packages
+this program has. `gui-newest` asks the build host for the newest official
+tiers (GTK 4.24, libadwaita 1.10, as shipped by GNOME 51) and is built in CI
+against Fedora rawhide, so the "newest" claim is tested rather than assumed.
+The bindings are `gtk4` 0.11 and `libadwaita` 0.9; [docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md)
+records when those versions were verified.
 
 The window is deliberately small for now: printers, jobs and settings are the
 next pages to be added to the same binary. Why GTK4 + libadwaita and not
@@ -248,9 +256,9 @@ Relm4, Iced, Slint or a web UI is written down in
 [docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md); the vocabulary, the operation set
 and which controls are read-only versus guarded, and how the window and the
 terminal stay in step, are written down in
-[docs/INTERACTION.md](docs/INTERACTION.md) — modelled on the way
-[Parabolic](https://github.com/NickvisionApps/Parabolic) keeps one core behind
-its GTK and WinUI fronts. The window and the dialog share
+[docs/INTERACTION.md](docs/INTERACTION.md) — one core behind every front end,
+following the [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/)
+and the libadwaita widgets they describe. The window and the dialog share
 the [language settings](#languages): `--lang`, `IPP_DUPLEXD_FORK_LANG` and the
 usual `LANG`/`LC_*` variables pick the language of the labels, and the window
 asks the daemon for its status with the same `Accept-Language`, so both speak

@@ -207,6 +207,13 @@ jobs:
       - name: Test
         run: cargo test --features gui
 
+      # The newest official API tier (GTK 4.24 / libadwaita 1.10) is a build
+      # configuration of its own. Only Fedora rawhide has the toolkit for it;
+      # the stable release keeps the broadly packagable tier.
+      - name: Build against the newest toolkit tier
+        if: matrix.release == 'rawhide'
+        run: cargo build --release --features gui-newest
+
       # Both paths of the program, driven under the newest X server: the window
       # opens, and the dialog answers. A stylesheet that changed too much shows
       # up here rather than on somebody's desk.

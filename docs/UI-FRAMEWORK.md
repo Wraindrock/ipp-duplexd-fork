@@ -8,17 +8,26 @@ recorded here so the next person can re-check it instead of re-litigating it.
 
 ## Decision
 
-**GTK4 + libadwaita**, behind the optional `gui` Cargo feature:
+**GTK4 + libadwaita**, the toolkit GNOME itself is built on, behind the optional
+`gui` Cargo feature. The bindings are the newest official ones and are checked
+against the newest official releases before each bump.
 
-| Crate | Version | Why |
+| Crate | Version | Checked | Why |
+| --- | --- | --- | --- |
+| `gtk4` | 0.11.5 | 2026-09-20 | The official Rust bindings of GTK; MSRV 1.83, built for GTK 4.24 API tier |
+| `libadwaita` | 0.9.2 (`v1_5`) | 2026-07-07 | The official Rust bindings of GNOME's application framework: `AdwStyleManager` (system light/dark, accent colour, high contrast), `AdwAlertDialog`, `AdwNavigationSplitView` |
+| `rust-i18n` | 4 | — | Already used by the daemon and the setup wizard; the window reuses the same catalogs |
+
+Two API tiers exist so that "newest" and "packagas on current distributions"
+are both first-class:
+
+| Feature | Toolkit floor | Use |
 | --- | --- | --- |
-| `gtk4` | 0.10 | Native widgets on every Linux desktop that runs CUPS; MSRV 1.83; requires GTK 4.0 at the sys level |
-| `libadwaita` | 0.8 (`v1_5`) | GNOME's GTK4 application framework: platform look, `AdwStyleManager` (system light/dark, accent colour, high contrast), `AdwAlertDialog` |
-| `rust-i18n` | 4 | Already used by the daemon and the setup wizard; the dialog reuses the same catalogs |
+| `gui` (default) | GTK 4.10, libadwaita 1.5 | Every distribution we package for (Fedora 40+, Ubuntu 24.04+, Debian 13+, Arch) |
+| `gui-newest` | GTK 4.24, libadwaita 1.10 | The newest official API tier (GNOME 51), for a build host that has it |
 
-The dialog is `src/bin/ipp-duplexd-fork-gui.rs`; everything that does not need
-GTK (argument parsing, the strings, the exit codes) is in `src/gui.rs` and is
-unit-tested without a display.
+CI proves both tiers compile and pass the same tests, so the "newest" claim is a
+tested configuration rather than a sentence in a document.
 
 ## Requirements that drove the choice
 
@@ -53,28 +62,35 @@ not for GUIs in general.
 | Tauri 2 / Dioxus | no — a webview | via CSS `prefers-color-scheme` | web stack | depends | needs WebKitGTK + an IPC layer | MIT/Apache | Two languages and a web runtime for one dialog; overkill. |
 | Xilem / Vizia / Floem | no | varies | manual | mostly missing | early | MIT/Apache | Not mature enough for something users rely on mid-print. |
 
+### Verified versions (re-checked 2026-10-26)
+
+| Thing | Version | Date | Source |
+| --- | --- | --- | --- |
+| GNOME release | **51** | 2026-09 | [GNOME release notes](https://release.gnome.org/51/) ("GNOME 51 includes GTK 4.23 and Libadwaita 1.10") |
+| GTK (stable) | **4.24.1** | tag 2026-10-01 | [GNOME/gtk tags](https://gitlab.gnome.org/GNOME/gtk/-/tags) |
+| libadwaita | **1.10.0** | tag 2026-09-14 | [GNOME/libadwaita tags](https://gitlab.gnome.org/GNOME/libadwaita/-/tags) |
+| gtk4 (Rust) | 0.11.5 | 2026-09-20 | [crates.io](https://crates.io/crates/gtk4) |
+| libadwaita (Rust) | 0.9.2 | 2026-07-07 | [crates.io](https://crates.io/crates/libadwaita) |
+
+The release-page statement is that GNOME 51 ships GTK 4.23 and libadwaita 1.10;
+GTK 4.24 is the stable release cut from that cycle (4.23 is the development
+series, whose stable form is 4.24, the same way 4.22 was the stable form of
+4.21). libadwaita 1.10 requires GTK 4.23.1 or newer.
+
 ### Evidence worth keeping
 
-- **Distroshelf**, the manager this project is modelled on, is `gtk4 0.11` +
-  `libadwaita 0.9` + `gettext-rs` (its own `Cargo.toml`). The toolkit choice
-  above puts the future manager on the same footing.
 - libadwaita's `StyleManager` exposes `color-scheme`, `accent-color`,
   `high-contrast` and `connect_color_scheme_notify`; the default scheme is
   "follow the system", which is exactly requirement 2 — no code in this repo
   reads a theme setting.
+- `AdwNavigationSplitView` (1.4), `AdwStatusPage` (1.2), `AdwToast` (1.0),
+  `AdwToolbarView` (1.4), `AdwAboutDialog` (1.5) and `AdwAlertDialog` (1.5) are
+  all part of libadwaita itself, so the HIG patterns need no third-party code.
 - Slint's pricing page: open source applications are GPLv3, proprietary use
   needs a paid licence. MIT code that linked it would have to be distributed
   under the GPL.
 - iced's theme module documents a built-in `Theme`/`Palette` model; changes to
   the *system* appearance are a separate concern the application must wire up.
-
-### Why not gtk4 0.11 + libadwaita 0.9 (Distroshelf's pair)
-
-Those versions want a newer Rust (1.92) and a newer GTK/libadwaita than the
-distributions we package for. `gtk4 0.10` + `libadwaita 0.8`/`v1_5` still gives
-`AdwAlertDialog` and `AdwStyleManager`, and is satisfied by Fedora 40+, Ubuntu
-24.04+ and Debian 13+. Bumping later is a `Cargo.toml` change plus the same
-tests.
 
 ## How the requirements are met in the code
 
