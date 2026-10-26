@@ -1,0 +1,49 @@
+#!/bin/sh
+# Entry point of the AppImage.
+#
+# The image carries all three programs. Running it with no arguments opens the
+# flip dialog, because that is the piece you would start by hand; the other two
+# are one word away:
+#
+#   ./ipp-duplexd-fork-<version>-x86_64.AppImage                          # dialog
+#   ./ipp-duplexd-fork-<version>-x86_64.AppImage daemon --printer ipp://...# daemon
+#   ./ipp-duplexd-fork-<version>-x86_64.AppImage setup                    # wizard
+#
+# `--daemon` and `--setup` work too, so `./x.AppImage --daemon --help` reads
+# naturally.
+set -e
+
+if [ -z "${APPDIR-}" ]; then
+    APPDIR=$(dirname "$(readlink -f "$0")")
+fi
+export APPDIR
+
+# The GTK plugin leaves its environment in apprun-hooks: the bundled GTK
+# immodules, gdk-pixbuf loaders, GSettings schemas and library path. Source
+# them so the dialog uses those instead of whatever the host has.
+if [ -d "$APPDIR/apprun-hooks" ]; then
+    for hook in "$APPDIR"/apprun-hooks/*.sh; do
+        if [ -e "$hook" ]; then
+            # shellcheck source=/dev/null
+            . "$hook"
+        fi
+    done
+fi
+
+# qpdf travels inside the image; the daemon finds it on PATH.
+PATH="$APPDIR/usr/bin:${PATH-}"
+export PATH
+
+case "${1-}" in
+    daemon|--daemon)
+        shift
+        exec "$APPDIR/usr/bin/ipp-duplexd-fork" "$@"
+        ;;
+    setup|--setup)
+        shift
+        exec "$APPDIR/usr/bin/ipp-duplexd-fork-setup" "$@"
+        ;;
+    *)
+        exec "$APPDIR/usr/bin/ipp-duplexd-fork-gui" "$@"
+        ;;
+esac

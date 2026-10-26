@@ -108,6 +108,11 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %{_userunitdir}/ipp-duplexd-fork.service
 
 %changelog
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.1-1
+- Added packaging/build-appimage.sh: a self-contained image with the
+  daemon, the wizard, the GTK4 dialog, qpdf and the GTK4/libadwaita
+  libraries, for trying the program on a machine where nothing is
+  installed. It is a test build, not a fourth package.
 * Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.0-1
 - Added a GTK4 front end, ipp-duplexd-fork-gui, which shows the "flip the
   stack" confirmation the daemon used to borrow from zenity/kdialog/xmessage.

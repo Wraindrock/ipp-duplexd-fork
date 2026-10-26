@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ipp-duplexd fork
+GenericName=Manual duplex printer
+Comment=Print both sides by flipping the stack when asked
+Exec=ipp-duplexd-fork-gui
+Icon=ipp-duplexd-fork
+Terminal=false
+Categories=System;Printing;
+Keywords=print;printer;duplex;ipp;paper;scan;

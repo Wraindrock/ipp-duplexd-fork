@@ -31,11 +31,14 @@ app --> CUPS queue (driverless) --> ipp-duplexd-fork (127.0.0.1:6632)
 ./packaging/build-arch.sh   # Arch Linux: packaging/arch/ipp-duplexd-fork-*.pkg.tar.zst  (needs makepkg)
 ./packaging/build-deb.sh    # Debian/Ubuntu: packaging/ipp-duplexd-fork_*.deb            (needs dpkg-deb)
 ./packaging/build-rpm.sh    # Fedora/RHEL/openSUSE: packaging/ipp-duplexd-fork-*.rpm      (needs rpm-build)
+./packaging/build-appimage.sh # any distro: packaging/ipp-duplexd-fork-*.AppImage (for testing)
 ```
 
-All three install `/usr/bin/ipp-duplexd-fork`, the `ipp-duplexd-fork-setup` helper, a
-systemd **user** unit, and docs, and depend on `qpdf`. Translations are
-compiled into the binaries, so there are no locale files to install or lose.
+The three packages install `/usr/bin/ipp-duplexd-fork`, the
+`ipp-duplexd-fork-setup` helper, a systemd **user** unit, and docs, and depend on
+`qpdf`; the AppImage is a self-contained test build instead (see below).
+Translations are compiled into the binaries, so there are no locale files to
+install or lose.
 
 The RPM spec is [packaging/rpm/ipp-duplexd-fork.spec](packaging/rpm/ipp-duplexd-fork.spec);
 it takes the version from `Cargo.toml` (passed in by the build script) and
@@ -58,6 +61,36 @@ sudo dnf config-manager addrepo --from-repofile=https://wraindrock.github.io/ipp
 sudo dnf install ipp-duplexd-fork
 sudo dnf upgrade            # later: picks up new builds
 ```
+
+## Trying it without installing (AppImage)
+
+For a quick look on a machine where nothing is installed, build a single-file
+image — it bundles the daemon, the wizard and the GTK4 dialog, plus GTK4,
+libadwaita and qpdf:
+
+```sh
+./packaging/build-appimage.sh
+chmod +x packaging/ipp-duplexd-fork-*.AppImage
+./packaging/ipp-duplexd-fork-*.AppImage                 # the flip dialog
+./packaging/ipp-duplexd-fork-*.AppImage daemon --printer ipp://192.168.1.50/ipp/print
+./packaging/ipp-duplexd-fork-*.AppImage setup           # the setup wizard
+```
+
+Running it with no arguments opens the dialog; `daemon` and `setup` reach the
+other two programs. If your distribution does not have FUSE (some minimal or
+container setups do not), prefix any of these with `APPIMAGE_EXTRACT_AND_RUN=1`
+to unpack it to a temporary directory first. Built images are attached to every
+[release](https://github.com/Wraindrock/ipp-duplexd-fork/releases), so you can
+also download one instead of building it.
+
+It is a test build, not a replacement for the packages: it is unsigned, it
+does not install anything or register with the desktop, and the wizard still
+needs the host's `cups-client` because it has to talk to the real CUPS. The
+script pins the AppImage tooling to a release tag and verifies its checksum, and
+it exercises the finished image (the three binaries are inside, GTK4 and
+libadwaita are bundled, the dialog's `--help` works, the daemon speaks Chinese
+with `--lang zh-CN`, and under Xvfb the dialog confirms) and deletes it rather
+than leaving a broken artifact.
 
 ### Upgrading from the package named `ipp-duplexd`
 

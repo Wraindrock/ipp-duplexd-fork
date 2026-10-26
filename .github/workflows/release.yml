@@ -91,9 +91,31 @@ jobs:
           path: packaging/*.rpm
           if-no-files-found: error
 
+  appimage:
+    name: AppImage
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK4, libadwaita, qpdf and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev qpdf xvfb
+          sudo apt-get clean
+
+      - name: Build and check the AppImage
+        run: ./packaging/build-appimage.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: packaging/*.AppImage
+          if-no-files-found: error
+
   release:
     name: GitHub release
-    needs: [deb, arch, rpm]
+    needs: [deb, arch, rpm, appimage]
     # workflow_dispatch runs stop after the build artifacts; only tags release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest

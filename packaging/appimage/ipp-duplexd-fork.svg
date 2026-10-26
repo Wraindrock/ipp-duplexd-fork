@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Two sheets of paper, one flipped over, with an arrow between them: the
+     manual duplex pass this program automates. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="28" y="58" width="86" height="120" rx="10"
+          fill="#e8e8e8" stroke="#6c757d" stroke-width="10"/>
+    <path d="M50 86h42M50 110h42M50 134h30" stroke="#adb5bd" stroke-width="10"/>
+    <rect x="142" y="78" width="86" height="120" rx="10"
+          fill="#ffffff" stroke="#6c757d" stroke-width="10"/>
+    <path d="M164 106h42M164 130h42M164 154h30" stroke="#adb5bd" stroke-width="10"/>
+    <path d="M58 206c34 0 50-18 50-38" stroke="#3584e4" stroke-width="12"/>
+    <path d="M96 158l20 22-26 12" stroke="#3584e4" stroke-width="12"/>
+  </g>
+</svg>

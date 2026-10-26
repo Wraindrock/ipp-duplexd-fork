@@ -155,3 +155,29 @@ jobs:
           echo "$out"
           test "$code" -eq 2
           grep -q "GET /flip" <<<"$out"
+
+  # The AppImage is the "try it without installing" build. It embeds GTK4 and
+  # libadwaita, so it needs the dev headers and a little longer than the other
+  # jobs; in exchange, a broken build-appimage.sh fails here instead of on a
+  # release.
+  appimage:
+    name: AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK4, libadwaita, qpdf and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev qpdf xvfb
+          sudo apt-get clean
+
+      - name: Build and check the AppImage
+        run: ./packaging/build-appimage.sh
+
+      - name: Upload the AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: packaging/*.AppImage
+          if-no-files-found: error
