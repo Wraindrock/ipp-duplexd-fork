@@ -24,16 +24,16 @@ export APPDIR
 PATH="$APPDIR/usr/bin:${PATH-}"
 export PATH
 
-# `ldconfig -p` lists what the dynamic linker can actually see. A failure here
-# is not fatal, it just means we cannot tell the user what is missing.
-host_libraries=$(ldconfig -p 2>/dev/null || true)
-
-missing() {
-    ls=$1
-    case $ls in
-        *"$2"*) return 1 ;;
-        *) return 0 ;;
-    esac
+# Ask the dynamic linker itself what it cannot resolve, which is the only
+# answer that also honours LD_LIBRARY_PATH and a desktop that keeps its
+# libraries somewhere unusual.
+unresolved() {
+    ldd "$APPDIR/usr/bin/ipp-duplexd-fork-gui" 2>/dev/null |
+        while IFS= read -r line; do
+            case $line in
+                *"not found"*) printf '%s ' "${line%% *}" ;;
+            esac
+        done
 }
 
 case "${1-}" in
@@ -49,15 +49,9 @@ case "${1-}" in
         exec "$APPDIR/usr/bin/ipp-duplexd-fork-setup" "$@"
         ;;
     *)
-        absent=
-        if missing "$host_libraries" libgtk-4.so; then
-            absent="$absent gtk4"
-        fi
-        if missing "$host_libraries" libadwaita-1.so; then
-            absent="$absent libadwaita"
-        fi
+        absent=$(unresolved)
         if [ -n "$absent" ]; then
-            echo "ipp-duplexd-fork: the AppImage uses your desktop's libraries, and it is missing:$absent" >&2
+            echo "ipp-duplexd-fork: the window uses your desktop's GTK4 and libadwaita; missing: $absent" >&2
             echo "install them (Fedora: sudo dnf install gtk4 libadwaita; Debian/Ubuntu: sudo apt install libgtk-4-1 libadwaita-1-0), or use the packaged build instead" >&2
             exit 2
         fi
