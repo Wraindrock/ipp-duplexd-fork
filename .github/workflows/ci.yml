@@ -163,6 +163,57 @@ jobs:
           test "$code" -eq 2
           grep -q "GET /flip" <<<"$out"
 
+  # Looking native means being drawn by the desktop's own libadwaita, so the
+  # newest stacks get a run of their own: Fedora 44 carries GNOME 50 and
+  # rawhide carries GNOME 51. They are the only jobs here that do not pin an
+  # older toolkit, and rawhide is allowed to be broken without reddening the
+  # branch, because it moves under us.
+  newest:
+    name: GNOME ${{ matrix.gnome }} (Fedora ${{ matrix.release }})
+    runs-on: ubuntu-latest
+    container: fedora:${{ matrix.release }}
+    continue-on-error: ${{ matrix.release == 'rawhide' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release: "44"
+            gnome: "50"
+          - release: rawhide
+            gnome: "51"
+    steps:
+      # The image has no git, and checkout runs before anything else would
+      # install it.
+      - name: Bootstrap the container
+        run: dnf -y install git tar gzip
+
+      - uses: actions/checkout@v4
+
+      - name: Install the newest GTK4, libadwaita, Xvfb and qpdf
+        run: |
+          dnf -y install cargo rust gtk4-devel libadwaita-devel qpdf xorg-x11-server-Xvfb
+          dnf -y clean all
+
+      - name: Show which toolkit this desktop has
+        run: |
+          pkg-config --modversion gtk4
+          pkg-config --modversion libadwaita-1
+
+      - name: Clippy
+        run: cargo clippy --all-targets --features gui -- -D warnings
+
+      - name: Test
+        run: cargo test --features gui
+
+      # Both paths of the program, driven under the newest X server: the window
+      # opens, and the dialog answers. A stylesheet that changed too much shows
+      # up here rather than on somebody's desk.
+      - name: The window opens and the dialog answers
+        run: |
+          set -eux
+          xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=window ./target/debug/ipp-duplexd-fork-gui --lang zh-CN
+          xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=accept ./target/debug/ipp-duplexd-fork-gui --flip "demo [odd pages]" --lang zh-CN
+
   # The AppImage is the "try it without installing" build. It embeds GTK4 and
   # libadwaita, so it needs the dev headers and a little longer than the other
   # jobs; in exchange, a broken build-appimage.sh fails here instead of on a
