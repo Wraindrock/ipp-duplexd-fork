@@ -191,7 +191,7 @@ jobs:
 
       - name: Install the newest GTK4, libadwaita, Xvfb and qpdf
         run: |
-          dnf -y install cargo rust gtk4-devel libadwaita-devel qpdf xorg-x11-server-Xvfb
+          dnf -y install cargo rust clippy gtk4-devel libadwaita-devel qpdf xorg-x11-server-Xvfb
           dnf -y clean all
 
       - name: Show which toolkit this desktop has
