@@ -1,8 +1,15 @@
 # Maintainer: Sami Kalliomäki <sami@kalliomaki.me>
 pkgname=ipp-duplexd-fork
 # read straight from the crate; this PKGBUILD only builds the working tree
-pkgver=$(sed -n 's/^version = "\(.*\)"/\1/p' "$startdir/../../Cargo.toml" | head -1)
-pkgrel=1
+# The project version is YYYY.MM.DD-N (packaging/version.sh); Arch has no dash
+# inside pkgver either, so the date is pkgver and the day's build counter is
+# pkgrel.
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$startdir/../../Cargo.toml" | head -1)
+pkgver=${version%%-*}
+pkgrel=${version##*-}
+if [[ "$pkgrel" == "$version" ]]; then
+    pkgrel=1
+fi
 pkgdesc="Manual duplex printing via a loopback virtual IPP printer"
 arch=('x86_64' 'aarch64')
 license=('MIT')

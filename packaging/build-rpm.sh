@@ -1,13 +1,20 @@
 #!/bin/bash
 # Build an RPM (Fedora / RHEL / openSUSE) from the working tree.
-# Needs: cargo, rpmbuild. Result: packaging/ipp-duplexd-fork-<ver>-1[.<dist>].<arch>.rpm
+# Needs: cargo, rpmbuild. Result: packaging/ipp-duplexd-fork-<date>-<counter>[.<dist>].<arch>.rpm
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-if [[ -z "$ver" ]]; then
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+if [[ -z "$version" ]]; then
     echo "no version in Cargo.toml" >&2
     exit 1
+fi
+# RPM has no room for a dash inside Version, so the project version
+# YYYY.MM.DD-N (packaging/version.sh) is split into Version and Release.
+ver=${version%%-*}
+rel=${version##*-}
+if [[ "$rel" == "$version" ]]; then
+    rel=1
 fi
 if ! command -v rpmbuild >/dev/null; then
     echo "rpmbuild is not installed" >&2
@@ -35,6 +42,7 @@ rpmbuild -bb --nodeps \
     --define "_dbpath $top/db" \
     --define "_tmppath $top/tmp" \
     --define "ipp_version $ver" \
+    --define "ipp_release $rel" \
     packaging/rpm/ipp-duplexd-fork.spec
 
 built=$(find "$top/RPMS" -name '*.rpm' -print -quit)

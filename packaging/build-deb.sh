@@ -1,9 +1,11 @@
 #!/bin/bash
 # Build a Debian/Ubuntu binary package from the working tree.
-# Needs: cargo, dpkg-deb. Result: packaging/ipp-duplexd-fork_<ver>-1_<arch>.deb
+# Needs: cargo, dpkg-deb. Result: packaging/ipp-duplexd-fork_<version>_<arch>.deb
+# (<version> is YYYY.MM.DD-N, see packaging/version.sh; Debian keeps it whole.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# already YYYY.MM.DD-N, which Debian reads as upstream-version/revision
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 arch=$(dpkg --print-architecture 2>/dev/null || echo amd64)
 
@@ -31,7 +33,7 @@ $(sed 's/^/ /;s/^ $/ ./' LICENSE)
 EOF
 
 gzip -9n <<EOF > "$stage/usr/share/doc/ipp-duplexd-fork/changelog.gz"
-ipp-duplexd-fork ($ver-1) unstable; urgency=medium
+ipp-duplexd-fork ($ver) unstable; urgency=medium
 
   * Initial release.
 
@@ -41,7 +43,7 @@ EOF
 mkdir -p "$stage/DEBIAN"
 cat > "$stage/DEBIAN/control" <<EOF
 Package: ipp-duplexd-fork
-Version: $ver-1
+Version: $ver
 Section: net
 Priority: optional
 Architecture: $arch
@@ -59,7 +61,7 @@ Description: Manual duplex printing via a loopback virtual IPP printer
  lpadmin -p NAME -E -v ipp://127.0.0.1:6632/ipp/print -m everywhere
 EOF
 
-out="packaging/ipp-duplexd-fork_${ver}-1_${arch}.deb"
+out="packaging/ipp-duplexd-fork_${ver}_${arch}.deb"
 dpkg-deb --build --root-owner-group "$stage" "$out"
 echo
 echo "install with: sudo apt install ./$out"

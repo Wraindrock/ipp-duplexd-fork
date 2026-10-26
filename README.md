@@ -51,6 +51,25 @@ with `rust2rpm`; `build-rpm.sh` also verifies the finished package (both
 binaries, the unit, the license, the `qpdf` dependency, and that no locale data
 was installed) and deletes it rather than leave a broken artifact.
 
+## Version numbers
+
+Versions are dates, not promises: `2026.10.26-3` is the third build cut on
+26 October 2026, and the release tag is the same with a leading `v`
+(`v2026.10.26-3`). The counter is what keeps two builds of one day apart, in
+the order they were cut.
+
+`packaging/version.sh next` prints the version today's next build gets (it
+counts today's tags), `packaging/version.sh set [version]` writes it to
+`Cargo.toml` and `Cargo.lock`, and `packaging/version.sh check [tag]` proves
+that a tree and a tag agree — CI and the release workflow both run it, so a
+mismatch fails before anything is published. `packaging/release.sh` does a
+whole cut: version, checks, commit, tag, push.
+
+Each package format spells the same number its own way: RPM splits it into
+`Version: 2026.10.26` and `Release: 3` (no dashes allowed in `Version`), Arch
+into `pkgver=2026.10.26` and `pkgrel=3`, and Debian takes `2026.10.26-3`
+unchanged as upstream-version/revision.
+
 ## Installing on Fedora with dnf
 
 The fork publishes its RPMs as a **dnf repository on GitHub Pages**, rebuilt on

@@ -22,6 +22,13 @@
 
 specfile := packaging/rpm/ipp-duplexd-fork.spec
 version  := $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml)
+# 2026.10.26-3 is a date plus the day's build counter; RPM needs them
+# apart on the Version: and Release: lines.
+ver      := $(word 1,$(subst -, ,$(version)))
+rel      := $(word 2,$(subst -, ,$(version)))
+ifeq ($(rel),)
+rel      := 1
+endif
 distname := ipp-duplexd-fork-$(version)
 sources  := Cargo.toml Cargo.lock src locales docs README.md LICENSE \
             packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
@@ -33,8 +40,10 @@ srpm: check
 	mkdir -p "$(outdir)"
 	work="$$(mktemp -d)"; trap 'rm -rf "$$work"' EXIT; \
 	tar czf "$$work/$(distname).tar.gz" --transform 's,^,$(distname)/,' $(sources); \
-	sed -e 's|%{ipp_version}|$(version)|g' \
+	sed -e 's|%{ipp_version}|$(ver)|g' \
+	    -e 's|%{ipp_release}|$(rel)|g' \
 	    -e '/^%{!?ipp_version:/d' \
+	    -e '/^%{!?ipp_release:/d' \
 	    -e 's|^Source0:.*|Source0:        $(distname).tar.gz|' \
 	    -e 's|^%setup -q -n ipp-duplexd-fork$$|%setup -q -n $(distname)|' \
 	    "$(specfile)" > "$$work/$(distname).spec"; \
@@ -57,6 +66,7 @@ check:
 	@test -n "$(outdir)"  || { echo "pass outdir=<directory>, COPR does"; exit 1; }
 	@test "$$(grep -c '%{ipp_version}' $(specfile))" = 1 || { echo "spec: %{ipp_version} must appear once"; exit 1; }
 	@test "$$(grep -c '^%{!?ipp_version:' $(specfile))" = 1 || { echo "spec: the ipp_version guard must appear once"; exit 1; }
+	@test "$$(grep -c '%{ipp_release}' $(specfile))" = 1 || { echo "spec: %{ipp_release} must appear once"; exit 1; }
 	@test "$$(grep -c '^Source0:' $(specfile))" = 1 || { echo "spec: Source0 must appear once"; exit 1; }
 	@test "$$(grep -c '^%setup -q -n ipp-duplexd-fork$$' $(specfile))" = 1 || { echo "spec: '%setup -q -n ipp-duplexd-fork' must appear once"; exit 1; }
 	@echo "ipp-duplexd-fork $(version) -> $(outdir)"

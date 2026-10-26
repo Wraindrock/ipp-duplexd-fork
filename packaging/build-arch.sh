@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build an Arch Linux package from the working tree.
-# Result: packaging/arch/ipp-duplexd-fork-<ver>-<rel>-<arch>.pkg.tar.zst
+# Result: packaging/arch/ipp-duplexd-fork-<date>-<counter>-<arch>.pkg.tar.zst
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

@@ -3,8 +3,13 @@
 # ipp-duplexd-fork.tar.gz into the source directory and passes the version it read
 # from Cargo.toml:
 #
-#   rpmbuild -bb --define '_topdir DIR' --define 'ipp_version 0.1.3' \
+#   rpmbuild -bb --define '_topdir DIR' --define 'ipp_version 2026.10.26' \
+#            --define 'ipp_release 3' \
 #            --define '_sourcedir DIR/SOURCES' packaging/rpm/ipp-duplexd-fork.spec
+#
+# RPM cannot carry a dash inside Version, so the project version YYYY.MM.DD-N
+# (see packaging/version.sh) is split: the date goes in Version, the build
+# counter of that day in Release.
 #
 # The tarball name carries no version, so it can never disagree with the
 # version that is passed in (the same trick as packaging/build-arch.sh).
@@ -22,7 +27,8 @@
 # `rust2rpm` / `%cargo_vendor`; the file list and the flags below are the part
 # that stays.
 
-%{!?ipp_version:%{error:pass --define 'ipp_version <version>'; packaging/build-rpm.sh does}}
+%{!?ipp_version:%{error:pass --define 'ipp_version <date>'; packaging/build-rpm.sh does}}
+%{!?ipp_release:%global ipp_release 1}
 %{!?_userunitdir:%global _userunitdir %{_prefix}/lib/systemd/user}
 
 # [profile.release] sets strip = true (Cargo.toml), so there is no debug
@@ -32,7 +38,7 @@
 
 Name:           ipp-duplexd-fork
 Version:        %{ipp_version}
-Release:        1%{?dist}
+Release:        %{ipp_release}%{?dist}
 Summary:        Manual duplex printing via a loopback virtual IPP printer
 License:        MIT
 URL:            https://github.com/Wraindrock/ipp-duplexd-fork
@@ -109,12 +115,18 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 
 %changelog
 
-* Tue Oct 27 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.5.0-1
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.26-1
+- Versions are dates now: YYYY.MM.DD-N, where N counts the builds cut that
+  day (packaging/version.sh). Cargo carries 2026.10.26-1; RPM splits it into
+  Version 2026.10.26 and Release 1, Arch into pkgver/pkgrel, Debian keeps it
+  whole. No behaviour change.
+
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.5.0-1
 - Adding a virtual printer now offers the queues the local CUPS daemon reports
   (CUPS-Get-Printers); pick one and the name, address and URI are filled in.
   The manual fields stay under a collapsed "Advanced" section.
 
-* Tue Oct 27 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.4.0-1
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.4.0-1
 - One daemon serves several virtual printers from
   ~/.config/ipp-duplexd-fork/config.toml, re-read on POST /reload, and the
   manager window owns every operation: add, edit and remove printers, print the

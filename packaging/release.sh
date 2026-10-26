@@ -1,13 +1,17 @@
 #!/bin/bash
-# Cut a release: bump Cargo.toml + Cargo.lock, run the CI checks, commit,
-# tag v<ver>, and push — the Release workflow then builds and publishes
-# the packages. Usage: packaging/release.sh 0.1.3
+# Cut a release: give the tree its date-based version, run the CI checks,
+# commit, tag and push — the Release workflow then builds the packages, the
+# AppImage and the dnf repository.
+#
+# Usage: packaging/release.sh [version]
+#   without a version: today's date and the next free counter (2026.10.26-2)
+#   with a version:    that exact YYYY.MM.DD-N
+# Needs: git, cargo, shellcheck; a clean working tree.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ver=${1:-}
-if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "usage: $0 <version>    e.g. $0 0.1.3" >&2
+if (($# > 1)); then
+    echo "usage: $0 [version]    e.g. $0 2026.10.26-3" >&2
     exit 2
 fi
 if ! command -v shellcheck >/dev/null; then
@@ -15,47 +19,44 @@ if ! command -v shellcheck >/dev/null; then
     echo "  e.g. sudo pacman -S shellcheck  /  sudo apt install shellcheck" >&2
     exit 1
 fi
-if git rev-parse -q --verify "refs/tags/v$ver" >/dev/null; then
-    echo "tag v$ver already exists" >&2
-    exit 1
-fi
 # the release commit should hold nothing but the version bump
-if [[ $(jj log -r @ --no-graph -T 'empty') != "true" ]]; then
-    echo "working copy (@) has changes — commit or abandon them first" >&2
-    exit 1
-fi
-# ...and go on top of main, so moving the bookmark forward is all that is left
-if [[ $(jj log -r main --no-graph -T 'commit_id') != $(jj log -r @- --no-graph -T 'commit_id') ]]; then
-    echo "main is not at @- — releases are cut from the tip of main:" >&2
-    jj log -r 'main | @-' >&2
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "the working tree is not clean — commit or stash first" >&2
     exit 1
 fi
 
-echo "==> bumping version to $ver"
-sed -i "s/^version = \".*\"/version = \"$ver\"/" Cargo.toml
-cargo update --offline -p ipp-duplexd-fork
+version=${1:-$(./packaging/version.sh next)}
+./packaging/version.sh set "$version"
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+    echo "tag v$version already exists" >&2
+    exit 1
+fi
 
-echo "==> running the CI checks"
-# same list as .github/workflows/ci.yml, warnings denied like there
+echo "==> checking $version"
+# same commands as .github/workflows/ci.yml, warnings denied like there
 export RUSTFLAGS="-D warnings"
 cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --all-targets --features gui -- -D warnings
+cargo clippy --all-targets -- -D warnings
 shellcheck packaging/*.sh
 cargo build --all-targets --locked
-cargo test --locked
+cargo test --features gui --locked
+./packaging/version.sh check "v$version"
 
 echo "==> committing and tagging"
-jj commit -m "Release v$ver"
-jj tag set "v$ver" -r @-
-jj bookmark set main -r @-
+git -c user.name=ian -c user.email=ian@localhost add -A
+git -c user.name=ian -c user.email=ian@localhost commit -m "Release v$version"
+git -c user.name=ian -c user.email=ian@localhost tag -a "v$version" -m "v$version"
 
-jj log -r @- --no-graph
-read -r -p "push main and v$ver to origin? [y/N] " answer
+git log --oneline --decorate -1
+read -r -p "push main and v$version to origin? [y/N] " answer
 if [[ "$answer" != [yY] ]]; then
-    echo "not pushed — when ready: jj git push --bookmark main --tag v$ver"
+    echo "not pushed — when ready: git push origin main && git push origin v$version"
     exit 0
 fi
-jj git push --bookmark main --tag "v$ver"
+git push origin main
+git push origin "v$version"
 
 echo
 echo "done — the Release workflow is building the packages:"
