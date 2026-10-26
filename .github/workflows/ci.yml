@@ -191,7 +191,7 @@ jobs:
 
       - name: Install the newest GTK4, libadwaita, Xvfb and qpdf
         run: |
-          dnf -y install cargo rust clippy gtk4-devel libadwaita-devel qpdf xorg-x11-server-Xvfb xorg-x11-xauth
+          dnf -y install cargo rust clippy gtk4-devel libadwaita-devel qpdf xorg-x11-server-Xvfb xorg-x11-xauth dbus-tools dbus-daemon
           dnf -y clean all
 
       - name: Show which toolkit this desktop has
@@ -211,8 +211,18 @@ jobs:
       - name: The window opens and the dialog answers
         run: |
           set -eux
-          xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=window ./target/debug/ipp-duplexd-fork-gui --lang zh-CN
-          xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=accept ./target/debug/ipp-duplexd-fork-gui --flip "demo [odd pages]" --lang zh-CN
+          # A container has no session bus and no GPU, and GTK4 4.22 aborts on
+          # a missing machine-id plus a half-initialised GL stack. Give it a
+          # private bus and the software renderer, which is all a headless
+          # smoke test needs.
+          headless() {
+            dbus-run-session -- xvfb-run -a env \
+              GSK_RENDERER=cairo GTK_A11Y=none \
+              IPP_DUPLEXD_FORK_GUI_TEST="$1" \
+              ./target/debug/ipp-duplexd-fork-gui "${@:2}"
+          }
+          headless window --lang zh-CN
+          headless accept --flip "demo [odd pages]" --lang zh-CN
 
   # The AppImage is the "try it without installing" build. It embeds GTK4 and
   # libadwaita, so it needs the dev headers and a little longer than the other
