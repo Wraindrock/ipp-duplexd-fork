@@ -56,12 +56,13 @@ there, and the other fronts call it.
 | --- | --- | --- | --- | --- |
 | Show status | `ipp-duplexd-fork` log line, `GET /` | Status page (fetched with the window's `Accept-Language`) | yes | — |
 | Refresh | `GET /` | Header bar button, also every 2 s | yes (idempotent) | — |
-| Print the backs | `GET /flip` | Suggested "print the backs" button → confirmation dialog | **no** | only offered while a job waits; a job may be printed once |
-| Cancel a job | IPP `Cancel-Job` | Row action in the job list | **no** | confirmation dialog, cancel is the default response |
-| Choose the language | `--lang`, `IPP_DUPLEXD_FORK_LANG`, `LC_*` | Settings page (shows the current one; changing it writes a hint, it takes effect on restart) | config | — |
-| Printer address, port, settle time | `--printer`, `--listen`, `--settle` | Printer page: shown, with the file the daemon reads | config | — |
-| Run the wizard | `ipp-duplexd-fork-setup` | About → "set up a printer": opens a terminal running the wizard | **no** | — |
-| Read the docs, version | `--help`, `--version` | About page | yes | — |
+| Print the backs | `GET /flip` | The printer row's "print the backs" button → toast | **no** | only offered while that printer has a job waiting |
+| Add a virtual printer | a new `[[printer]]` in `config.toml` | `+` → the queues CUPS reports; pick one and it is added; name/address/URI live under **Advanced** | **no** | shared validator; unique name and address; never written over an unparseable file |
+| Remove a virtual printer | delete the `[[printer]]` | Row action with a destructive confirmation | **no** | confirmation dialog, cancel is the close response |
+| Choose the language | `--lang`, `IPP_DUPLEXD_FORK_LANG`, `LC_*` | Settings → language row; applied to the window at once, to the daemon on restart | config | list comes from the catalogs |
+| Printer address, port, settle time | `--printer`, `--listen`, `--settle`, `config.toml` | The printer editor writes `config.toml`; the daemon re-reads it on `POST /reload` | config | shared validator, atomic write, `0600` |
+| Restart the service | `systemctl --user restart ipp-duplexd-fork` | Service row button, used when no daemon answers a reload | **no** | — |
+| Read the docs, version | `--help`, `--version` | About group | yes | — |
 
 Two consequences are deliberate:
 

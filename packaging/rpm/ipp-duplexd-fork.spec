@@ -109,6 +109,11 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 
 %changelog
 
+* Tue Oct 27 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.5.0-1
+- Adding a virtual printer now offers the queues the local CUPS daemon reports
+  (CUPS-Get-Printers); pick one and the name, address and URI are filled in.
+  The manual fields stay under a collapsed "Advanced" section.
+
 * Tue Oct 27 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.4.0-1
 - One daemon serves several virtual printers from
   ~/.config/ipp-duplexd-fork/config.toml, re-read on POST /reload, and the

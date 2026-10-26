@@ -220,9 +220,13 @@ is there, as one tree:
   [configuration file](#configuration-file), showing its listen address and
   the real printer behind it. Each row has four buttons: print the backs of
   the waiting job (the same thing as `GET /flip`), look at that printer's
-  status page, edit it, remove it. The `+` in the header adds a printer; the
-  form asks for a name, a loopback address and the real printer's `ipp://`
-  URI.
+  status page, edit it, remove it.
+- **Adding a printer** — the `+` in the header asks the local CUPS daemon
+  (`CUPS-Get-Printers`) which queues it has and lists them: pick one and it is
+  added with a unique name (`<queue>-duplex`), the next free loopback address
+  and `ipp://127.0.0.1:631/printers/<queue>` as the printer behind it. The name,
+  address and URI are still there under **Advanced**, folded away unless
+  nothing was detected; that is also how to reach a printer CUPS does not know.
 - **Service** — what `systemctl --user` says about
   `ipp-duplexd-fork.service`, and a button that restarts it.
 - **Settings** — the language of the window (and, after the next restart, of

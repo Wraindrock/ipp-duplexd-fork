@@ -25,6 +25,7 @@ use adw::prelude::*;
 use gtk::glib;
 use gtk4 as gtk;
 use ipp_duplexd_fork::config as cfg_file;
+use ipp_duplexd_fork::discover;
 use ipp_duplexd_fork::gui::{self, Mode};
 use ipp_duplexd_fork::l10n;
 use ipp_duplexd_fork::service;
@@ -554,15 +555,21 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);
 
-    let list = gtk::ListBox::new();
-    list.add_css_class("boxed-list");
-
     let name = adw::EntryRow::new();
     name.set_title(&labels.field_name);
     let listen = adw::EntryRow::new();
     listen.set_title(&labels.field_listen);
     let real = adw::EntryRow::new();
     real.set_title(&labels.field_real);
+
+    let used: Vec<String> = state
+        .config
+        .borrow()
+        .printers
+        .iter()
+        .map(|printer| printer.listen.clone())
+        .collect();
+    listen.set_text(&gui::default_listen(&used));
 
     let heading = match index {
         Some(index) => {
@@ -577,27 +584,79 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                 &[("name", printer.name.clone())],
             )
         }
-        None => {
-            let used: Vec<String> = state
-                .config
-                .borrow()
-                .printers
-                .iter()
-                .map(|printer| printer.listen.clone())
-                .collect();
-            listen.set_text(&gui::default_listen(&used));
-            labels.dialog_add.clone()
-        }
+        None => labels.dialog_add.clone(),
     };
 
-    list.append(&name);
-    list.append(&listen);
-    list.append(&real);
+    let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let fields = gtk::ListBox::new();
+    fields.add_css_class("boxed-list");
+    fields.append(&name);
+    fields.append(&listen);
+    fields.append(&real);
 
     let dialog = adw::AlertDialog::builder()
         .heading(&heading)
-        .extra_child(&list)
+        .extra_child(&body)
         .build();
+
+    match index {
+        // Editing an existing printer: the fields are the point.
+        Some(_) => body.append(&fields),
+        // Adding: offer what CUPS already knows, and keep the manual fields
+        // folded away unless there was nothing to detect.
+        None => {
+            let (detected, failure) = match discover::cups_printers() {
+                Ok(printers) => (printers, None),
+                Err(err) => (Vec::new(), Some(err)),
+            };
+            let nothing_found = detected.is_empty();
+            let group = adw::PreferencesGroup::builder()
+                .title(&labels.detected_title)
+                .build();
+            if nothing_found {
+                let row = adw::ActionRow::builder()
+                    .title(&labels.detected_none)
+                    .build();
+                if let Some(err) = failure {
+                    row.set_subtitle(&l10n::tr(
+                        locale,
+                        "gui.window.detected_failed",
+                        &[("err", err)],
+                    ));
+                }
+                group.add(&row);
+            } else {
+                group.set_description(Some(&labels.detected_hint));
+                for entry in detected {
+                    let row = adw::ActionRow::builder()
+                        .title(&entry.queue)
+                        .subtitle(&entry.model)
+                        .activatable(true)
+                        .build();
+                    row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+                    let state = state.clone();
+                    let dialog = dialog.clone();
+                    row.connect_activated(move |_| {
+                        add_detected(&state, &entry);
+                        dialog.close();
+                    });
+                    group.add(&row);
+                }
+            }
+            body.append(&group);
+
+            let advanced = adw::ExpanderRow::builder()
+                .title(&labels.advanced)
+                .subtitle(&labels.advanced_hint)
+                .build();
+            advanced.set_expanded(nothing_found);
+            advanced.add_row(&name);
+            advanced.add_row(&listen);
+            advanced.add_row(&real);
+            body.append(&advanced);
+        }
+    }
+
     dialog.add_response("cancel", &labels.cancel);
     dialog.add_response("save", &labels.save);
     dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
@@ -637,6 +696,34 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     dialog.present(Some(&state.window));
 }
 
+/// Add one detected queue: a unique name, the next free address, and the queue
+/// as the printer to forward to.
+fn add_detected(state: &Rc<State>, detected: &discover::Discovered) {
+    let locale = state.locale.get();
+    let mut candidate = state.config.borrow().clone();
+    let names: Vec<String> = candidate
+        .printers
+        .iter()
+        .map(|printer| printer.name.clone())
+        .collect();
+    let listens: Vec<String> = candidate
+        .printers
+        .iter()
+        .map(|printer| printer.listen.clone())
+        .collect();
+    candidate
+        .printers
+        .push(gui::printer_from_detected(detected, &names, &listens));
+    if let Err(e) = candidate.validate(locale) {
+        toast(
+            state,
+            &l10n::tr(locale, "gui.window.save_failed", &[("err", e)]),
+        );
+        return;
+    }
+    state.config.replace(candidate);
+    commit(state);
+}
 fn confirm_remove(state: &Rc<State>, index: usize) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);

@@ -204,6 +204,12 @@ gui.window.save_failed: "Not saved: %{err}"
 gui.window.restarted: "Service restarted"
 gui.window.restart_failed: "Could not restart the service: %{err}"
 gui.window.service_missing: "No systemd user service; the window could not start the daemon"
+gui.window.detected_title: "Detected printers"
+gui.window.detected_hint: "Pick one and it is added for you; the settings below fill themselves in."
+gui.window.detected_none: "Nothing to detect"
+gui.window.detected_failed: "The local CUPS did not answer (%{err}); you can still add a printer by hand."
+gui.window.advanced: "Advanced"
+gui.window.advanced_hint: "Name, listen address and the printer URI"
 gui.window.unreachable: "not reachable at %{addr} (%{err})"
 
 # ---------------------------------------------------------- setup wizard

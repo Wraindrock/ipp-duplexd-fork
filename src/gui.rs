@@ -187,6 +187,12 @@ pub struct WindowLabels {
     pub restarted: String,
     pub restart_failed: String,
     pub service_missing: String,
+    pub detected_title: String,
+    pub detected_hint: String,
+    pub detected_none: String,
+    pub detected_failed: String,
+    pub advanced: String,
+    pub advanced_hint: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -229,6 +235,12 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         restarted: text("gui.window.restarted"),
         restart_failed: text("gui.window.restart_failed"),
         service_missing: text("gui.window.service_missing"),
+        detected_title: text("gui.window.detected_title"),
+        detected_hint: text("gui.window.detected_hint"),
+        detected_none: text("gui.window.detected_none"),
+        detected_failed: text("gui.window.detected_failed"),
+        advanced: text("gui.window.advanced"),
+        advanced_hint: text("gui.window.advanced_hint"),
     }
 }
 
@@ -245,6 +257,21 @@ pub fn default_listen(used: &[String]) -> String {
     format!(
         "127.0.0.1:{}",
         DEFAULT_DAEMON.rsplit(':').next().unwrap_or("6632")
+    )
+}
+
+/// Turn a discovered CUPS queue into a virtual printer: a unique name, a free
+/// loopback address, and the queue's URI as the printer to forward to. The
+/// window calls this when the user picks a row from the detected list.
+pub fn printer_from_detected(
+    detected: &crate::discover::Discovered,
+    existing_names: &[String],
+    used_listens: &[String],
+) -> crate::config::Printer {
+    crate::config::Printer::new(
+        &crate::discover::suggested_name(&detected.queue, existing_names),
+        &default_listen(used_listens),
+        &detected.uri,
     )
 }
 
@@ -345,6 +372,24 @@ mod tests {
 
     fn args(list: &[&str]) -> Result<Args, String> {
         parse_args(list.iter().map(|s| s.to_string()), l10n::FALLBACK, None)
+    }
+
+    #[test]
+    fn a_detected_queue_becomes_a_complete_printer() {
+        let detected = crate::discover::Discovered {
+            queue: "Office Laser".to_string(),
+            model: "HP DeskJet 2600".to_string(),
+            uri: "ipp://127.0.0.1:631/printers/Office Laser".to_string(),
+            state: Some(3),
+        };
+        let printer = printer_from_detected(
+            &detected,
+            &["office-laser-duplex".to_string()],
+            &["127.0.0.1:6632".to_string()],
+        );
+        assert_eq!(printer.name, "office-laser-duplex-2");
+        assert_eq!(printer.listen, "127.0.0.1:6633");
+        assert_eq!(printer.real, "ipp://127.0.0.1:631/printers/Office Laser");
     }
 
     #[test]

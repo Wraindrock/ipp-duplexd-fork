@@ -197,6 +197,12 @@ gui.window.save_failed: "没有保存：%{err}"
 gui.window.restarted: "服务已重启"
 gui.window.restart_failed: "重启服务失败：%{err}"
 gui.window.service_missing: "没有 systemd 用户服务；窗口无法启动守护进程"
+gui.window.detected_title: "检测到的打印机"
+gui.window.detected_hint: "选一台就直接添加，下面的设置会自动填好。"
+gui.window.detected_none: "没有检测到打印机"
+gui.window.detected_failed: "本机 CUPS 没有应答（%{err}）；也可以手动添加。"
+gui.window.advanced: "高级"
+gui.window.advanced_hint: "名称、监听地址和打印机 URI"
 gui.window.unreachable: "连不上 %{addr}（%{err}）"
 
 # ---------------------------------------------------------------- 安装向导
