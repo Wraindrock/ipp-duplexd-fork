@@ -34,6 +34,12 @@ fi
 PATH="$APPDIR/usr/bin:${PATH-}"
 export PATH
 
+# The libraries the GTK plugin copied, plus the ones complete_bundle.py added
+# (fontconfig, harfbuzz, fribidi, ...). The plugin only rpaths the files it
+# copied itself, so state the directory explicitly.
+LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+
 case "${1-}" in
     daemon|--daemon)
         shift

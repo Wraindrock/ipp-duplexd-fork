@@ -107,6 +107,12 @@ fi
 
 "$tools/linuxdeploy" --appdir "$appdir" "${executables[@]}"
 
+# linuxdeploy leaves a few libraries to the host (fontconfig, freetype,
+# harfbuzz, fribidi...), which would make the image fail at the loader on a
+# machine that does not carry the same base system. Pull the rest of the
+# closure in, and refuse anything that is still borrowed afterwards.
+python3 packaging/appimage/complete_bundle.py "$appdir"
+
 # linuxdeploy generates an AppRun that starts a single executable; this image
 # has three, so install the dispatching one (it still sources the GTK plugin's
 # apprun-hooks, which is where the bundled loaders and schemas are announced).
@@ -135,6 +141,11 @@ for library in libgtk-4.so libadwaita-1.so; do
         problems+=("$library is not bundled")
     fi
 done
+# Nothing may still be resolved from the build host: that is what makes the
+# image fail on a machine without the same base system.
+if ! python3 packaging/appimage/complete_bundle.py --check "$root"; then
+    problems+=("the image still borrows libraries from the build host")
+fi
 
 # The behaviour: a self-contained image must still speak its languages, and the
 # dialog must be able to open a window (Xvfb, if this machine has it).
