@@ -119,21 +119,36 @@ daemon.dialog.not_yet: "Not yet"
 gui.usage: |
   ipp-duplexd-fork-gui - the desktop front end.
 
+  Run it with no arguments to open the window: the daemon's status, and the
+  button that prints the backs once the stack is flipped.
+
   Usage:
+    ipp-duplexd-fork-gui                       open the window
     ipp-duplexd-fork-gui --flip JOB [--lang CODE]
 
   --flip JOB   ask whether the stack was flipped; exit 0 prints the backs,
                exit 1 leaves the job waiting for GET /flip
-  --lang CODE  language of the dialog (default: from the environment)
+  --lang CODE  language of the window and dialog (default: from the environment)
   --version    print the version
   --help       print this help
 
-  The manager window (printers, jobs, settings) is the next thing to be built
-  on top of this dialog.
+  The window shows what the daemon is doing; printers, jobs and settings will
+  grow there.
 gui.err.needs_value: "%{what} needs a value"
 gui.err.unknown_arg: "unknown argument '%{arg}'"
 gui.err.bad_lang: "bad language '%{lang}'; known languages: %{list}"
 gui.err.no_display: "cannot open a display (%{err}); the daemon keeps waiting for GET /flip"
+gui.err.no_display_window: "cannot open a display (%{err}); start the window from your desktop session, as your own user (not with sudo)"
+gui.window.daemon_group: "Daemon"
+gui.window.address_title: "Address"
+gui.window.address_subtitle: "where ipp-duplexd-fork listens"
+gui.window.status_title: "Status"
+gui.window.refresh: "Refresh"
+gui.window.flip_title: "Print the backs"
+gui.window.flip_subtitle: "once the stack is flipped, this continues the waiting job"
+gui.window.about_group: "About"
+gui.window.version_title: "Version"
+gui.window.unreachable: "not reachable at %{addr} (%{err})"
 
 # ---------------------------------------------------------- setup wizard
 setup.usage: |

@@ -108,6 +108,10 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %{_userunitdir}/ipp-duplexd-fork.service
 
 %changelog
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.2-1
+- Start the window when the program is started without arguments, instead of
+  printing the usage text: the daemon's status and the button that prints the
+  backs, built with stock libadwaita widgets so it follows the desktop theme.
 * Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.1-1
 - Added packaging/build-appimage.sh: a self-contained image with the
   daemon, the wizard, the GTK4 dialog, qpdf and the GTK4/libadwaita

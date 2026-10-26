@@ -71,12 +71,13 @@ libadwaita and qpdf:
 ```sh
 ./packaging/build-appimage.sh
 chmod +x packaging/ipp-duplexd-fork-*.AppImage
-./packaging/ipp-duplexd-fork-*.AppImage                 # the flip dialog
+./packaging/ipp-duplexd-fork-*.AppImage                 # the window
 ./packaging/ipp-duplexd-fork-*.AppImage daemon --printer ipp://192.168.1.50/ipp/print
 ./packaging/ipp-duplexd-fork-*.AppImage setup           # the setup wizard
 ```
 
-Running it with no arguments opens the dialog; `daemon` and `setup` reach the
+Running it with no arguments opens the window (do not use `sudo`: it has to
+run as your desktop user to see your display); `daemon` and `setup` reach the
 other two programs. If your distribution does not have FUSE (some minimal or
 container setups do not), prefix any of these with `APPIMAGE_EXTRACT_AND_RUN=1`
 to unpack it to a temporary directory first. Built images are attached to every
@@ -89,7 +90,7 @@ needs the host's `cups-client` because it has to talk to the real CUPS. The
 script pins the AppImage tooling to a release tag and verifies its checksum, and
 it exercises the finished image (the three binaries are inside, GTK4 and
 libadwaita are bundled, the dialog's `--help` works, the daemon speaks Chinese
-with `--lang zh-CN`, and under Xvfb the dialog confirms) and deletes it rather
+with `--lang zh-CN`, and under Xvfb both the window opens and the dialog confirms) and deletes it rather
 than leaving a broken artifact.
 
 ### Upgrading from the package named `ipp-duplexd`
@@ -195,17 +196,24 @@ curl http://127.0.0.1:6632/flip
 
 `GET http://127.0.0.1:6632/` shows job status.
 
-## Desktop dialog (GTK4)
+## Desktop app (GTK4 + libadwaita)
 
-The flip confirmation is a GTK4 window built with
-[libadwaita][adw] (GNOME's GTK4 application framework), `ipp-duplexd-fork-gui`,
-shipped in the Arch, Debian and RPM packages. Because it is a regular
-libadwaita application it follows the desktop's **light/dark colour scheme
+`ipp-duplexd-fork-gui` is the desktop face of the program, built with
+[libadwaita][adw] (GNOME's GTK4 application framework) and shipped in the Arch,
+Debian, RPM packages and the AppImage. Because it is a regular libadwaita
+application it follows the desktop's **light/dark colour scheme
 automatically** — there is no theme setting in ipp-duplexd-fork, and accent
 colour and high contrast come along for free. (For a one-off override,
 libadwaita honours `ADW_DEBUG_COLOR_SCHEME=prefer-dark` or `prefer-light`.)
 
-The daemon starts it automatically when the odd pages are done:
+Start it with no arguments (from your desktop menu, or in a terminal **without
+`sudo`**) and it opens its window: the daemon's address, what the daemon is
+doing right now, and the button that prints the backs once the stack is
+flipped. The status refreshes itself every couple of seconds. A daemon that
+isn't running yet is reported as such rather than as an error.
+
+The same binary is what the daemon starts automatically when the odd pages are
+done:
 
 ```sh
 ipp-duplexd-fork-gui --flip "report.pdf [odd pages]" --lang zh-CN
@@ -228,12 +236,14 @@ cargo build --release                 # daemon + setup wizard, no GTK4
 cargo build --release --features gui  # adds ipp-duplexd-fork-gui
 ```
 
-The dialog is also the first piece of the manager window (printers, jobs,
-settings); that window will grow in the same binary. Why GTK4 + libadwaita and
-not Relm4, Iced, Slint or a web UI is written down in
-[docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md). The daemon and the
-dialog share the [language settings](#languages): `--lang` is passed along,
-so the button labels match the rest of the messages.
+The window is deliberately small for now: printers, jobs and settings are the
+next pages to be added to the same binary. Why GTK4 + libadwaita and not
+Relm4, Iced, Slint or a web UI is written down in
+[docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md). The window and the dialog share
+the [language settings](#languages): `--lang`, `IPP_DUPLEXD_FORK_LANG` and the
+usual `LANG`/`LC_*` variables pick the language of the labels, and the window
+asks the daemon for its status with the same `Accept-Language`, so both speak
+the same language.
 
 
 ## Languages

@@ -42,7 +42,9 @@ const ACCEPT: &str = "accept";
 
 fn main() -> ExitCode {
     let default_lang = l10n::from_env().unwrap_or(l10n::FALLBACK);
-    let answer = gui::test_answer(std::env::var(gui::TEST_ENV).ok().as_deref());
+    let hook = std::env::var(gui::TEST_ENV).ok();
+    let answer = gui::test_answer(hook.as_deref());
+    let window_test = gui::window_test(hook.as_deref());
     let args = match gui::parse_args(std::env::args().skip(1), default_lang, answer) {
         Ok(args) => args,
         Err(e) => {
@@ -70,6 +72,13 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Mode::Window => match run_window(args.lang, window_test) {
+            Ok(code) => ExitCode::from(code),
+            Err(e) => {
+                eprintln!("{}: {e}", gui::NAME);
+                ExitCode::from(gui::EXIT_NO_DISPLAY)
+            }
+        },
     }
 }
 
@@ -141,4 +150,142 @@ fn run_flip_dialog(
 
     app.run_with_args::<&str>(&[]);
     Ok(result.get())
+}
+
+/// The desktop window. Starting the program with no arguments lands here: it
+/// shows what the daemon reports on its status page and offers the one action
+/// that matters at the printer, "print the backs" once the stack is flipped.
+///
+/// Everything is a stock libadwaita widget (a `PreferencesPage` inside a
+/// `ToolbarView`), so the window follows the desktop's light/dark scheme, its
+/// accent colour and its font settings without any code here.
+fn run_window(locale: &'static str, window_test: bool) -> Result<u8, String> {
+    adw::init().map_err(|e| {
+        l10n::tr(
+            locale,
+            "gui.err.no_display_window",
+            &[("err", e.to_string())],
+        )
+    })?;
+
+    let labels = gui::window_labels(locale);
+    let app = adw::Application::builder()
+        .application_id(gui::APP_ID)
+        .flags(adw::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+
+    app.connect_activate(move |app| {
+        let labels = labels.clone();
+        let window = adw::ApplicationWindow::builder()
+            .application(app)
+            .title(&labels.title)
+            .default_width(560)
+            .default_height(460)
+            .build();
+
+        let header = adw::HeaderBar::new();
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&header);
+
+        let page = adw::PreferencesPage::new();
+
+        let daemon_group = adw::PreferencesGroup::new();
+        daemon_group.set_title(&labels.daemon_group);
+
+        let address = adw::EntryRow::new();
+        address.set_title(&labels.address_title);
+        address.set_text(gui::DEFAULT_DAEMON);
+        daemon_group.add(&address);
+
+        let status = adw::ActionRow::builder()
+            .title(&labels.status_title)
+            .subtitle("…")
+            .build();
+        status.set_subtitle_lines(8);
+        let refresh = gtk::Button::with_label(&labels.refresh);
+        refresh.add_css_class("flat");
+        status.add_suffix(&refresh);
+        daemon_group.add(&status);
+
+        let flip_row = adw::ActionRow::builder()
+            .title(&labels.flip_title)
+            .subtitle(&labels.flip_subtitle)
+            .build();
+        let flip = gtk::Button::with_label(&labels.flip_title);
+        flip.add_css_class("suggested-action");
+        flip_row.add_suffix(&flip);
+        daemon_group.add(&flip_row);
+
+        page.add(&daemon_group);
+
+        let about_group = adw::PreferencesGroup::new();
+        about_group.set_title(&labels.about_group);
+        let version = adw::ActionRow::builder()
+            .title(&labels.version_title)
+            .subtitle(env!("CARGO_PKG_VERSION"))
+            .build();
+        about_group.add(&version);
+        page.add(&about_group);
+
+        toolbar.set_content(Some(&page));
+        window.set_content(Some(&toolbar));
+
+        // The daemon renders its status page in the language this window asks
+        // for, so the text is shown rather than translated a second time.
+        let update: Rc<dyn Fn()> = {
+            let status = status.clone();
+            let address = address.clone();
+            Rc::new(move || {
+                let addr = address.text().to_string();
+                match gui::http_get(&addr, "/", locale) {
+                    Ok(body) => status.set_subtitle(body.trim()),
+                    Err(e) => status.set_subtitle(&gui::unreachable(locale, &addr, &e)),
+                }
+            })
+        };
+        update();
+
+        {
+            let update = update.clone();
+            refresh.connect_clicked(move |_| update());
+        }
+        {
+            let status = status.clone();
+            let address = address.clone();
+            let update = update.clone();
+            flip.connect_clicked(move |_| {
+                let addr = address.text().to_string();
+                match gui::http_get(&addr, "/flip", locale) {
+                    Ok(body) => status.set_subtitle(body.trim()),
+                    Err(e) => status.set_subtitle(&gui::unreachable(locale, &addr, &e)),
+                }
+                update();
+            });
+        }
+
+        // Keep the status honest without a refresh click.
+        {
+            let update = update.clone();
+            glib::timeout_add_seconds_local(2, move || {
+                update();
+                glib::ControlFlow::Continue
+            });
+        }
+
+        window.present();
+
+        if window_test {
+            // The Xvfb smoke test needs the real window to be built and shown,
+            // then to go away without a user.
+            let window = window.clone();
+            let app = app.clone();
+            glib::timeout_add_local_once(Duration::from_millis(400), move || {
+                window.close();
+                app.quit();
+            });
+        }
+    });
+
+    app.run_with_args::<&str>(&[]);
+    Ok(gui::EXIT_ACCEPT)
 }

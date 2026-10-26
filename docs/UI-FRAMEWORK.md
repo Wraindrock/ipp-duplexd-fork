@@ -86,7 +86,14 @@ tests.
   through `rust-i18n`; `--lang` and the environment follow the same rules as
   the daemon (`src/l10n.rs`).
 - **Look:** `adw::AlertDialog` with a suggested "print the backs" response and
-  the "not yet" response as the close/escape action.
+  the "not yet" response as the close/escape action. Started with no arguments
+  the same binary opens the window instead: an `adw::PreferencesPage` inside an
+  `adw::ToolbarView`, i.e. stock libadwaita widgets, so the desktop's header
+  bar, spacing and colours come for free.
+- **The window:** the daemon's address, its status page (fetched with the
+  window's own `Accept-Language`, so the words match the labels), a refresh
+  action, the "print the backs" button, and the version. Nothing is invented:
+  the daemon already says what it is doing, the window shows it.
 - **Exit contract:** 0 = print the backs, 1 = not yet, 2 = the dialog could not
   run (no display). The daemon only continues on 0.
 

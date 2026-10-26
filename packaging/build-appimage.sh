@@ -169,6 +169,10 @@ if command -v xvfb-run >/dev/null; then
     if ! IPP_DUPLEXD_FORK_GUI_TEST=accept xvfb-run -a ./"$out" --flip "smoke [odd pages]" --lang zh-CN; then
         problems+=("the dialog did not confirm under Xvfb")
     fi
+
+    if ! IPP_DUPLEXD_FORK_GUI_TEST=window xvfb-run -a ./"$out" --lang zh-CN; then
+        problems+=("the window did not open under Xvfb")
+    fi
 else
     echo "note: xvfb-run is missing, so the bundled GTK was not exercised"
 fi

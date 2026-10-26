@@ -145,6 +145,13 @@ jobs:
             test $? -eq 1
           fi
 
+      # Started from the desktop, with no arguments, the program must open its
+      # window instead of printing a usage text; the test hook closes it.
+      - name: Starting it with no arguments opens the window
+        run: |
+          xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=window \
+            ./target/debug/ipp-duplexd-fork-gui --lang zh-CN
+
       # No display: the daemon must not mistake that for a confirmation.
       - name: Without a display the dialog says so and exits 2
         run: |
