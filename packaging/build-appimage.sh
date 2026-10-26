@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Build one self-contained AppImage for trying the fork without installing it.
+# Build one AppImage for trying the fork without installing it.
 #
-# The image carries the daemon, the setup wizard and the GTK4 dialog, plus the
-# GTK4, libadwaita and qpdf libraries they need, the gdk-pixbuf loaders, the
-# GSettings schemas and the GTK immodules. That makes it useful for a quick
-# test on a machine where nothing of this is installed.
+# The image carries the daemon, the setup wizard and the GTK4 application, but
+# *not* GTK4 or libadwaita: it uses the copies from the machine it runs on, so
+# the window follows that desktop's own theme — on GNOME 49 it looks like
+# GNOME 49, not like whatever archive happened to be used to build this file.
+# That is also why it needs gtk4 >= 4.10 and libadwaita >= 1.5 installed (see
+# the README); the host also needs qpdf for the daemon to print.
 #
 # It is a test build, not an alternative to the packages: it is unsigned, it is
 # not registered with the desktop, and the setup wizard still needs the host's
@@ -35,13 +37,8 @@ fi
 # Pinned by release tag (not "continuous") so the same tooling is used until
 # somebody deliberately bumps it, and verified against a checksum so a moved
 # tag or a tampered download fails loudly instead of shipping.
-linuxdeploy_version=1-alpha-20251107-1
-linuxdeploy_sha256=c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
 appimagetool_version=1.9.1
 appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
-# The GTK plugin publishes no releases, so pin the commit instead.
-gtk_plugin_commit=7a3fbc31a9e5075073ff8790f26effbac5f84453
-gtk_plugin_sha256=b0f4cbc684a0103a9651f0955b635eaea0096b3a66c0f5a2c2aa337960375171
 
 tools=${APPIMAGE_TOOLS:-${XDG_CACHE_HOME:-$HOME/.cache}/ipp-duplexd-fork/appimage}
 mkdir -p "$tools"
@@ -61,13 +58,9 @@ fetch() { # url sha256 path
     mv "$path.part" "$path"
 }
 
-fetch "https://github.com/linuxdeploy/linuxdeploy/releases/download/$linuxdeploy_version/linuxdeploy-x86_64.AppImage" \
-    "$linuxdeploy_sha256" "$tools/linuxdeploy"
 fetch "https://github.com/AppImage/appimagetool/releases/download/$appimagetool_version/appimagetool-x86_64.AppImage" \
     "$appimagetool_sha256" "$tools/appimagetool"
-fetch "https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/$gtk_plugin_commit/linuxdeploy-plugin-gtk.sh" \
-    "$gtk_plugin_sha256" "$tools/linuxdeploy-plugin-gtk.sh"
-chmod +x "$tools/linuxdeploy" "$tools/appimagetool" "$tools/linuxdeploy-plugin-gtk.sh"
+chmod +x "$tools/appimagetool"
 
 echo "building version $version for $arch"
 cargo build --release --locked --features gui
@@ -76,47 +69,21 @@ target_dir=${CARGO_TARGET_DIR:-target}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 appdir=$work/AppDir
-mkdir -p "$appdir"
+mkdir -p "$appdir/usr/bin"
+
+# The three programs are the whole payload: everything else (GTK, libadwaita,
+# qpdf) comes from the machine, which keeps the image small and, more
+# importantly, keeps the widget style in step with the desktop.
+for binary in ipp-duplexd-fork ipp-duplexd-fork-gui ipp-duplexd-fork-setup; do
+    install -m 0755 "$target_dir/release/$binary" "$appdir/usr/bin/$binary"
+done
+install -m 0755 packaging/appimage/AppRun "$appdir/AppRun"
+install -m 0644 packaging/appimage/ipp-duplexd-fork.desktop "$appdir/ipp-duplexd-fork.desktop"
+install -m 0644 packaging/appimage/ipp-duplexd-fork.svg "$appdir/ipp-duplexd-fork.svg"
 
 # APPIMAGE_EXTRACT_AND_RUN keeps the tools usable on machines without FUSE
 # (containers, minimal installs), which is also where this script tends to run.
 export APPIMAGE_EXTRACT_AND_RUN=1
-export DEPLOY_GTK_VERSION=4
-# The libraries archived from a distribution are stripped already, so strip has
-# nothing to win; and the copy bundled with linuxdeploy is older than the
-# binutils that produce .relr.dyn sections, so it would reject them as
-# "unknown type [0x13]" and abort the run mid-way.
-export NO_STRIP=1
-PATH="$tools:$PATH"
-export PATH
-
-executables=(
-    --executable "$target_dir/release/ipp-duplexd-fork"
-    --executable "$target_dir/release/ipp-duplexd-fork-gui"
-    --executable "$target_dir/release/ipp-duplexd-fork-setup"
-    --desktop-file packaging/appimage/ipp-duplexd-fork.desktop
-    --icon-file packaging/appimage/ipp-duplexd-fork.svg
-    --plugin gtk
-)
-qpdf_bin=$(command -v qpdf || true)
-if [ -n "$qpdf_bin" ]; then
-    executables+=(--executable "$qpdf_bin")
-else
-    echo "warning: qpdf is not installed here, so printing from the image needs the host's qpdf" >&2
-fi
-
-"$tools/linuxdeploy" --appdir "$appdir" "${executables[@]}"
-
-# linuxdeploy leaves a few libraries to the host (fontconfig, freetype,
-# harfbuzz, fribidi...), which would make the image fail at the loader on a
-# machine that does not carry the same base system. Pull the rest of the
-# closure in, and refuse anything that is still borrowed afterwards.
-python3 packaging/appimage/complete_bundle.py "$appdir"
-
-# linuxdeploy generates an AppRun that starts a single executable; this image
-# has three, so install the dispatching one (it still sources the GTK plugin's
-# apprun-hooks, which is where the bundled loaders and schemas are announced).
-install -m 0755 packaging/appimage/AppRun "$appdir/AppRun"
 
 out=packaging/ipp-duplexd-fork-$version-$arch.AppImage
 rm -f "$out"
@@ -125,8 +92,9 @@ chmod +x "$out"
 
 problems=()
 
-# The contents: three binaries, and the two libraries that make the dialog a
-# libadwaita application rather than a link error.
+# The contents: three binaries and nothing that would pin the image to an old
+# toolkit. A bundled libgtk/libadwaita is exactly the mistake this layout is
+# there to avoid, so it is an error rather than a nicety.
 extracted=$work/extracted
 mkdir -p "$extracted"
 ( cd "$extracted" && "$repo/$out" --appimage-extract >/dev/null )
@@ -137,22 +105,26 @@ for binary in ipp-duplexd-fork ipp-duplexd-fork-gui ipp-duplexd-fork-setup; do
     fi
 done
 for library in libgtk-4.so libadwaita-1.so; do
-    if [ -z "$(find "$root/usr" -name "$library*" -print -quit)" ]; then
-        problems+=("$library is not bundled")
+    if [ -n "$(find "$root/usr" -name "$library*" -print -quit 2>/dev/null)" ]; then
+        problems+=("$library is bundled; the window must use the desktop's copy")
     fi
 done
-# Nothing may still be resolved from the build host: that is what makes the
-# image fail on a machine without the same base system.
-if ! python3 packaging/appimage/complete_bundle.py --check "$root"; then
-    problems+=("the image still borrows libraries from the build host")
+if [ ! -f "$root/ipp-duplexd-fork.desktop" ]; then
+    problems+=("no desktop entry at the image root")
 fi
 
-# The behaviour: a self-contained image must still speak its languages, and the
-# dialog must be able to open a window (Xvfb, if this machine has it).
+# The behaviour: a portable image must still speak its languages, and the
+# window must be able to open (Xvfb, if this machine has it).
 help=$(./"$out" --help 2>&1) || problems+=("the dialog's --help failed")
 case "$help" in
     *--flip*) ;;
     *) problems+=("the dialog's --help does not mention --flip") ;;
+esac
+
+version_out=$(./"$out" --version 2>&1) || problems+=("the dialog's --version failed")
+case "$version_out" in
+    *"$version"*) ;;
+    *) problems+=("--version does not report $version") ;;
 esac
 
 code=0
@@ -174,7 +146,7 @@ if command -v xvfb-run >/dev/null; then
         problems+=("the window did not open under Xvfb")
     fi
 else
-    echo "note: xvfb-run is missing, so the bundled GTK was not exercised"
+    echo "note: xvfb-run is missing, so the window was not exercised"
 fi
 
 if [ ${#problems[@]} -ne 0 ]; then
@@ -188,6 +160,6 @@ fi
 
 size=$(du -h "$out" | cut -f1)
 echo "built $out ($size)"
-echo "try it with: ./$out            # the flip dialog"
+echo "try it with: ./$out            # the window"
 echo "             ./$out daemon ...  # the daemon inside the image"
 echo "             ./$out setup       # the setup wizard"

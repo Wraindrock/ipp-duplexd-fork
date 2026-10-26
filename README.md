@@ -36,7 +36,8 @@ app --> CUPS queue (driverless) --> ipp-duplexd-fork (127.0.0.1:6632)
 
 The three packages install `/usr/bin/ipp-duplexd-fork`, the
 `ipp-duplexd-fork-setup` helper, a systemd **user** unit, and docs, and depend on
-`qpdf`; the AppImage is a self-contained test build instead (see below).
+`qpdf` and the desktop's GTK4 and libadwaita; the AppImage is a test build for
+trying it without installing (see below).
 Translations are compiled into the binaries, so there are no locale files to
 install or lose.
 
@@ -64,9 +65,12 @@ sudo dnf upgrade            # later: picks up new builds
 
 ## Trying it without installing (AppImage)
 
-For a quick look on a machine where nothing is installed, build a single-file
-image — it bundles the daemon, the wizard and the GTK4 dialog, plus GTK4,
-libadwaita and qpdf:
+For a quick look without installing anything, build a single-file image — it
+carries the daemon, the wizard and the GTK4 application. It deliberately does
+**not** bundle GTK4 or libadwaita: the window uses your desktop's copies, so it
+always matches your current GNOME (or other desktop) style instead of freezing
+whatever toolkit the image happened to be built against. Your machine therefore
+needs `gtk4` (>= 4.10) and `libadwaita` (>= 1.5), plus `qpdf` for printing:
 
 ```sh
 ./packaging/build-appimage.sh
@@ -88,10 +92,12 @@ It is a test build, not a replacement for the packages: it is unsigned, it
 does not install anything or register with the desktop, and the wizard still
 needs the host's `cups-client` because it has to talk to the real CUPS. The
 script pins the AppImage tooling to a release tag and verifies its checksum, and
-it exercises the finished image (the three binaries are inside, GTK4 and
-libadwaita are bundled, the dialog's `--help` works, the daemon speaks Chinese
-with `--lang zh-CN`, and under Xvfb both the window opens and the dialog confirms) and deletes it rather
-than leaving a broken artifact.
+it exercises the finished image (the three binaries are inside, no GTK4 or
+libadwaita is bundled, the dialog's `--help` and `--version` work, the daemon
+speaks Chinese with `--lang zh-CN`, and under Xvfb both the window opens and the
+dialog confirms) and deletes it rather than leaving a broken artifact.
+If your desktop is missing `gtk4`/`libadwaita`, the launcher says so instead of
+failing with a loader error.
 
 ### Upgrading from the package named `ipp-duplexd`
 

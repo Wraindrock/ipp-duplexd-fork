@@ -108,6 +108,11 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %{_userunitdir}/ipp-duplexd-fork.service
 
 %changelog
+* Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.3-1
+- The AppImage no longer ships GTK4 or libadwaita: the window uses the
+  desktop's own libraries, so it matches the current GNOME style instead of
+  the (older) toolkit the image was built against. The launcher explains
+  how to install gtk4/libadwaita when they are missing.
 * Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 0.3.2-1
 - Start the window when the program is started without arguments, instead of
   printing the usage text: the daemon's status and the button that prints the

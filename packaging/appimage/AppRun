@@ -1,11 +1,12 @@
 #!/bin/sh
 # Entry point of the AppImage.
 #
-# The image carries all three programs. Running it with no arguments opens the
-# flip dialog, because that is the piece you would start by hand; the other two
-# are one word away:
+# The image carries all three programs, but not GTK4, libadwaita or qpdf: those
+# come from the machine it runs on. That is what keeps the window in step with
+# the desktop's own GNOME style, and it is why the program refuses to start with
+# a readable message when the host is missing them.
 #
-#   ./ipp-duplexd-fork-<version>-x86_64.AppImage                          # dialog
+#   ./ipp-duplexd-fork-<version>-x86_64.AppImage                          # window
 #   ./ipp-duplexd-fork-<version>-x86_64.AppImage daemon --printer ipp://...# daemon
 #   ./ipp-duplexd-fork-<version>-x86_64.AppImage setup                    # wizard
 #
@@ -18,30 +19,28 @@ if [ -z "${APPDIR-}" ]; then
 fi
 export APPDIR
 
-# The GTK plugin leaves its environment in apprun-hooks: the bundled GTK
-# immodules, gdk-pixbuf loaders, GSettings schemas and library path. Source
-# them so the dialog uses those instead of whatever the host has.
-if [ -d "$APPDIR/apprun-hooks" ]; then
-    for hook in "$APPDIR"/apprun-hooks/*.sh; do
-        if [ -e "$hook" ]; then
-            # shellcheck source=/dev/null
-            . "$hook"
-        fi
-    done
-fi
-
-# qpdf travels inside the image; the daemon finds it on PATH.
+# The image has no libraries of its own; anything it added to LD_LIBRARY_PATH
+# would only shadow the desktop's, which is exactly what must not happen here.
 PATH="$APPDIR/usr/bin:${PATH-}"
 export PATH
 
-# The libraries the GTK plugin copied, plus the ones complete_bundle.py added
-# (fontconfig, harfbuzz, fribidi, ...). The plugin only rpaths the files it
-# copied itself, so state the directory explicitly.
-LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export LD_LIBRARY_PATH
+# `ldconfig -p` lists what the dynamic linker can actually see. A failure here
+# is not fatal, it just means we cannot tell the user what is missing.
+host_libraries=$(ldconfig -p 2>/dev/null || true)
+
+missing() {
+    ls=$1
+    case $ls in
+        *"$2"*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
 
 case "${1-}" in
     daemon|--daemon)
+        if ! command -v qpdf >/dev/null 2>&1; then
+            echo "ipp-duplexd-fork: qpdf is not installed; install it (dnf install qpdf) or printing will fail" >&2
+        fi
         shift
         exec "$APPDIR/usr/bin/ipp-duplexd-fork" "$@"
         ;;
@@ -50,6 +49,18 @@ case "${1-}" in
         exec "$APPDIR/usr/bin/ipp-duplexd-fork-setup" "$@"
         ;;
     *)
+        absent=
+        if missing "$host_libraries" libgtk-4.so; then
+            absent="$absent gtk4"
+        fi
+        if missing "$host_libraries" libadwaita-1.so; then
+            absent="$absent libadwaita"
+        fi
+        if [ -n "$absent" ]; then
+            echo "ipp-duplexd-fork: the AppImage uses your desktop's libraries, and it is missing:$absent" >&2
+            echo "install them (Fedora: sudo dnf install gtk4 libadwaita; Debian/Ubuntu: sudo apt install libgtk-4-1 libadwaita-1-0), or use the packaged build instead" >&2
+            exit 2
+        fi
         exec "$APPDIR/usr/bin/ipp-duplexd-fork-gui" "$@"
         ;;
 esac
