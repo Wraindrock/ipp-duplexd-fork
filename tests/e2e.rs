@@ -731,3 +731,130 @@ fn a_busy_printer_still_gets_the_backs() {
     assert_eq!(r.len(), 2, "odd + even documents actually printed");
     assert_eq!(r[1].name, "doc4-busy [even pages]");
 }
+
+// ------------------------------------------------------ several printers
+
+/// Start the daemon from a configuration file instead of the flags.
+fn start_daemon_from_config(config: &Path, log: &Path) -> Daemon {
+    let cmd = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-fork"));
+    let mut cmd = cmd;
+    cmd.args(["--config", config.to_str().unwrap()])
+        .env("IPP_DUPLEXD_FORK_LANG", "en")
+        .stderr(Stdio::from(std::fs::File::create(log).unwrap()));
+    Daemon(cmd.spawn().expect("failed to start ipp-duplexd-fork"))
+}
+
+/// The port the daemon reported for one virtual printer.
+fn wait_for_printer(log: &Path, name: &str, timeout: Duration) -> u16 {
+    let deadline = Instant::now() + timeout;
+    let marker = format!("as printer '{name}'");
+    while Instant::now() < deadline {
+        let text = std::fs::read_to_string(log).unwrap_or_default();
+        for line in text.lines() {
+            if line.contains(&marker) {
+                if let Some(rest) = line.split("listening on 127.0.0.1:").nth(1) {
+                    let port: u16 = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect::<String>()
+                        .parse()
+                        .expect("bad port in ipp-duplexd-fork log");
+                    return port;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("printer {name} never started; log: {log:?}");
+}
+
+fn write_config(path: &Path, printers: &[(&str, u16)]) {
+    let mut text = String::new();
+    for (name, mock) in printers {
+        text.push_str(&format!(
+            "[[printer]]\nname = \"{name}\"\nlisten = \"127.0.0.1:0\"\nreal = \"ipp://127.0.0.1:{mock}/print\"\npoll = 1\n\n"
+        ));
+    }
+    std::fs::write(path, text).unwrap();
+}
+
+fn reload(port: u16) -> String {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(
+        s,
+        "POST /reload HTTP/1.1\r\nHost: t\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    out
+}
+
+#[test]
+fn one_daemon_serves_two_virtual_printers() {
+    let dir = TestDir::new("two-printers");
+    let (mock_a, received_a) = start_mock();
+    let (mock_b, received_b) = start_mock();
+    let config = dir.path("config.toml");
+    write_config(&config, &[("alpha", mock_a), ("beta", mock_b)]);
+    let log = dir.path("daemon.log");
+    let _daemon = start_daemon_from_config(&config, &log);
+
+    let alpha = wait_for_printer(&log, "alpha", Duration::from_secs(5));
+    let beta = wait_for_printer(&log, "beta", Duration::from_secs(5));
+    assert_ne!(alpha, beta, "each printer needs its own port");
+
+    // each virtual printer shows its own name and its own real printer
+    let page_a = http_get(alpha, "/");
+    assert!(page_a.contains("'alpha'"), "page A: {page_a}");
+    assert!(page_a.contains(&format!("127.0.0.1:{mock_a}/print")));
+    let page_b = http_get(beta, "/");
+    assert!(page_b.contains("'beta'"), "page B: {page_b}");
+    assert!(page_b.contains(&format!("127.0.0.1:{mock_b}/print")));
+
+    // a job on one printer never shows up on the other, and the flip gate is
+    // per printer too
+    let id = print_job(alpha, &make_pdf(3), "alpha-doc", Vec::new());
+    wait_job_state(alpha, id, &[6], Duration::from_secs(10));
+    assert!(!http_get(beta, "/").contains("alpha-doc"));
+    assert!(http_get(beta, "/flip").contains("no job is waiting"));
+    assert!(http_get(alpha, "/flip").contains("ok, printing the backs"));
+    wait_job_state(alpha, id, &[9], Duration::from_secs(10));
+    assert_eq!(received_a.lock().unwrap().len(), 2, "odd then even");
+    assert!(received_b.lock().unwrap().is_empty());
+}
+
+#[test]
+fn reload_picks_up_added_and_removed_printers() {
+    let dir = TestDir::new("reload");
+    let (mock_a, _received_a) = start_mock();
+    let (mock_b, _received_b) = start_mock();
+    let config = dir.path("config.toml");
+    write_config(&config, &[("alpha", mock_a)]);
+    let log = dir.path("daemon.log");
+    let _daemon = start_daemon_from_config(&config, &log);
+    let alpha = wait_for_printer(&log, "alpha", Duration::from_secs(5));
+
+    // add a second printer and reload through the first one
+    write_config(&config, &[("alpha", mock_a), ("beta", mock_b)]);
+    assert!(reload(alpha).contains("reloaded"));
+    let beta = wait_for_printer(&log, "beta", Duration::from_secs(5));
+    assert!(http_get(beta, "/").contains("'beta'"));
+    assert!(http_get(alpha, "/").contains("'alpha'"), "alpha stays");
+
+    // remove the first printer and reload through the second one
+    write_config(&config, &[("beta", mock_b)]);
+    assert!(reload(beta).contains("reloaded"));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut closed = false;
+    while Instant::now() < deadline {
+        if TcpStream::connect(("127.0.0.1", alpha)).is_err() {
+            closed = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(closed, "alpha should stop listening after the reload");
+    assert!(http_get(beta, "/").contains("'beta'"), "beta keeps serving");
+    assert!(std::fs::read_to_string(&log).unwrap().contains("reloaded"));
+}

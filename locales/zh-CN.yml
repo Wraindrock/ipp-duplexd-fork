@@ -10,6 +10,9 @@ daemon.usage: |
 
     --printer URI        真实打印机（推荐用本机 CUPS 队列：
                          ipp://127.0.0.1:631/printers/名称）
+    --config PATH        服务该文件里的每个 [[printer]]（默认在
+                         ~/.config/ipp-duplexd-fork/config.toml 存在时使用；
+                         管理窗口负责写它，POST /reload 会重新读取）
     --listen ADDR:PORT   监听地址（默认 127.0.0.1:6632）
     --name NAME          对外公布的打印机名（默认 manual-duplex）
     --blank WHERE        页数为奇数时空白页补在哪里：
@@ -25,6 +28,7 @@ daemon.usage: |
                          期间等打印机空闲，超时就直接送偶数页）
     --lang CODE          消息与状态页的语言（en、zh-CN；默认取自
                          $IPP_DUPLEXD_FORK_LANG、$LANGUAGE、$LC_ALL 或 $LANG）
+daemon.err.config_missing: "找不到配置文件 %{path}"
 daemon.err.needs_value: "%{what} 缺少取值"
 daemon.err.bad_auto_continue: "--auto-continue 取值无效"
 daemon.err.bad_rotate_even: "--rotate-even 取值无效"
@@ -46,6 +50,7 @@ daemon.err.remote_no_job_id: "真实打印机没有返回 job-id"
 daemon.err.remote_state: "真实打印机上的作业 %{id} 以状态 %{state} 结束"
 daemon.err.remote_lost: "与真实打印机失去联系：%{err}"
 daemon.log.nonloopback: "警告：正在非回环地址 %{addr} 上监听"
+daemon.log.config_loaded: "从 %{path} 提供 %{count} 个虚拟打印机"
 daemon.log.listening: "已作为打印机 '%{name}' 监听 %{addr}，转发到 %{uri}"
 daemon.log.lpadmin: "用这条命令添加 CUPS 队列：lpadmin -p %{name} -E -v ipp://127.0.0.1:%{port}/ipp/print -m everywhere"
 daemon.log.accept_error: "accept 出错：%{err}"
@@ -56,6 +61,10 @@ daemon.log.attr_fetch_failed: "取不到真实打印机的属性：%{err}"
 daemon.log.job_failed: "作业 %{id} 失败：%{err}"
 daemon.log.job_summary: "作业 %{id}“%{name}”：共 %{pages} 页，手动双面"
 daemon.log.job_odd_done: "作业 %{id}：奇数页打完了。%{message}"
+daemon.log.printer_stopped: "正在停止虚拟打印机 %{name}"
+daemon.log.reload_ok: "已重新加载 %{path}：%{count} 个虚拟打印机"
+daemon.log.reload_failed: "重新加载 %{path} 失败：%{err}"
+daemon.log.reload_no_file: "没有可重新加载的配置文件"
 daemon.log.job_completed: "作业 %{id} 已完成"
 daemon.log.settle_timeout: "真实打印机 %{secs} 秒内没有报告空闲，仍然继续打印背面"
 daemon.log.no_dialog: "没找到对话框工具（试过 zenity、kdialog、xmessage），改为等待 GET /flip"
@@ -67,6 +76,7 @@ daemon.log.qpdf_output: "qpdf %{args}：%{output}"
 # ------------------------------------------------------------ 守护进程：HTTP
 daemon.http.flip_ok: "好，正在打印背面"
 daemon.http.flip_none: "当前没有作业在等待翻纸"
+daemon.http.reloaded: "已重新加载"
 daemon.http.method_not_allowed: "不支持该请求方法"
 
 # -------------------------------------------------------- 守护进程：状态页文本
@@ -109,6 +119,22 @@ daemon.attr.make_and_model: "%{make} + 手动双面"
 daemon.dialog.text: "%{job}：奇数页已打印。\n请翻纸并重新装好，然后点“确定”打印背面。"
 daemon.dialog.ok: "确定，打印背面"
 daemon.dialog.not_yet: "还没翻"
+
+# ---------------------------------------------------------- 配置文件
+config.err.unreadable: "读不了 %{path}：%{err}"
+config.err.unparseable: "解析 %{path} 失败：%{err}"
+config.err.unwritable: "写不了 %{path}：%{err}"
+config.err.empty: "至少需要一个 [[printer]] 条目"
+config.err.bad_name: "每个虚拟打印机都要有名字"
+config.err.duplicate_name: "有两个虚拟打印机都叫 '%{name}'"
+config.err.duplicate_listen: "有两个虚拟打印机都监听 %{addr}"
+config.err.bad_listen: "监听地址 '%{addr}' 无效：%{err}"
+config.err.bad_real: "打印机 URI '%{real}' 无效：%{err}"
+config.err.bad_blank: "blank 只能是 leading、trailing 或 none"
+config.err.bad_rotate: "rotate-even 只能是 0 或 180"
+config.err.bad_settle: "settle 最多 600 秒"
+config.err.bad_poll: "poll 至少 1 秒"
+config.err.bad_lang: "语言 '%{lang}' 无效；可用语言：%{list}"
 
 # ------------------------------------------------------- daemon: the GUI
 # 上一段对话框文案由桌面端复用；以下只属于它自己的命令行与失败提示。

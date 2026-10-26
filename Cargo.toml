@@ -21,6 +21,11 @@ gui-newest = ["gui", "gtk4/v4_24", "libadwaita/v1_10"]
 
 [dependencies]
 rust-i18n = "4"
+
+# The configuration file (which virtual printers exist) is shared by the daemon
+# and the manager window, so it lives in the library crate.
+serde = { version = "1", features = ["derive"] }
+toml = "1"
 gtk4 = { version = "0.11", optional = true }
 libadwaita = { version = "0.9", optional = true, features = ["v1_5"] }
 

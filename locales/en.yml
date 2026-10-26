@@ -10,6 +10,9 @@ daemon.usage: |
 
     --printer URI        real printer (a local CUPS queue works well:
                          ipp://127.0.0.1:631/printers/NAME)
+    --config PATH        serve every [[printer]] in this file (default:
+                         ~/.config/ipp-duplexd-fork/config.toml when it exists;
+                         the manager window writes it, POST /reload re-reads it)
     --listen ADDR:PORT   listen address (default 127.0.0.1:6632)
     --name NAME          printer name to advertise (default manual-duplex)
     --blank WHERE        blank-page padding for odd page counts:
@@ -28,6 +31,7 @@ daemon.usage: |
     --lang CODE          language of messages and the status page
                          (en, zh-CN; default from $IPP_DUPLEXD_FORK_LANG,
                          $LANGUAGE, $LC_ALL or $LANG)
+daemon.err.config_missing: "no configuration file at %{path}"
 daemon.err.needs_value: "%{what} needs a value"
 daemon.err.bad_auto_continue: "bad --auto-continue"
 daemon.err.bad_rotate_even: "bad --rotate-even"
@@ -49,6 +53,7 @@ daemon.err.remote_no_job_id: "real printer returned no job-id"
 daemon.err.remote_state: "remote job %{id} ended in state %{state}"
 daemon.err.remote_lost: "lost contact with real printer: %{err}"
 daemon.log.nonloopback: "warning: listening on non-loopback address %{addr}"
+daemon.log.config_loaded: "serving %{count} virtual printers from %{path}"
 daemon.log.listening: "listening on %{addr} as printer '%{name}', forwarding to %{uri}"
 daemon.log.lpadmin: "add a CUPS queue with: lpadmin -p %{name} -E -v ipp://127.0.0.1:%{port}/ipp/print -m everywhere"
 daemon.log.accept_error: "accept error: %{err}"
@@ -59,6 +64,10 @@ daemon.log.attr_fetch_failed: "cannot fetch printer attributes from real printer
 daemon.log.job_failed: "job %{id} failed: %{err}"
 daemon.log.job_summary: "job %{id} '%{name}': %{pages} pages, manual duplex"
 daemon.log.job_odd_done: "job %{id}: odd pages done. %{message}"
+daemon.log.printer_stopped: "stopping the virtual printer %{name}"
+daemon.log.reload_ok: "reloaded %{path}: %{count} virtual printers"
+daemon.log.reload_failed: "cannot reload %{path}: %{err}"
+daemon.log.reload_no_file: "no configuration file to reload"
 daemon.log.job_completed: "job %{id} completed"
 daemon.log.settle_timeout: "the real printer did not report idle within %{secs}s; sending the backs anyway"
 daemon.log.no_dialog: "no dialog tool found (tried zenity, kdialog, xmessage); waiting for GET /flip"
@@ -70,6 +79,7 @@ daemon.log.qpdf_output: "qpdf %{args}: %{output}"
 # ------------------------------------------------------------- daemon: HTTP
 daemon.http.flip_ok: "ok, printing the backs"
 daemon.http.flip_none: "no job is waiting for a flip"
+daemon.http.reloaded: "reloaded"
 daemon.http.method_not_allowed: "method not allowed"
 
 # ------------------------------------------------- daemon: status page text
@@ -112,6 +122,22 @@ daemon.attr.make_and_model: "%{make} + manual duplex"
 daemon.dialog.text: "%{job}: odd pages printed.\nFlip the stack and reload it, then click OK to print the backs."
 daemon.dialog.ok: "OK, print backs"
 daemon.dialog.not_yet: "Not yet"
+
+# ------------------------------------------------- the configuration file
+config.err.unreadable: "cannot read %{path}: %{err}"
+config.err.unparseable: "cannot parse %{path}: %{err}"
+config.err.unwritable: "cannot write %{path}: %{err}"
+config.err.empty: "at least one [[printer]] entry is needed"
+config.err.bad_name: "every virtual printer needs a name"
+config.err.duplicate_name: "two virtual printers are called '%{name}'"
+config.err.duplicate_listen: "two virtual printers listen on %{addr}"
+config.err.bad_listen: "bad listen address '%{addr}': %{err}"
+config.err.bad_real: "bad printer URI '%{real}': %{err}"
+config.err.bad_blank: "blank pages must be leading, trailing or none"
+config.err.bad_rotate: "rotate-even must be 0 or 180"
+config.err.bad_settle: "settle must be at most 600 seconds"
+config.err.bad_poll: "poll must be at least 1 second"
+config.err.bad_lang: "bad language '%{lang}'; known languages: %{list}"
 
 # ------------------------------------------------------- daemon: the GUI
 # The GTK4 front end (--features gui) reuses the dialog text above; these are

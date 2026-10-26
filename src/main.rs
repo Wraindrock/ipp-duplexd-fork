@@ -12,14 +12,17 @@
 //! any driver work. Printer attributes are proxied from the real printer,
 //! so the virtual printer advertises the real hardware's capabilities.
 
+use ipp_duplexd_fork::config as cfg_file;
 use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg, PrinterUri};
 use ipp_duplexd_fork::{gui, l10n};
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -35,7 +38,7 @@ const J_ABORTED: i32 = 8;
 const J_COMPLETED: i32 = 9;
 
 #[derive(Clone)]
-struct Config {
+struct Settings {
     listen: String,
     printer: PrinterUri,
     name: String,
@@ -91,8 +94,9 @@ struct FlipGate {
 }
 
 struct Ctx {
-    cfg: Config,
+    cfg: Settings,
     port: u16,
+    reload: mpsc::Sender<()>,
     jobs: Mutex<HashMap<i32, Job>>,
     next_id: AtomicI32,
     flip: FlipGate,
@@ -115,68 +119,332 @@ fn log(msg: &str) {
 }
 
 fn main() {
-    let cfg = match parse_args() {
-        Ok(c) => c,
-        Err(e) => {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(e) = run(&argv) {
+        if !e.is_empty() {
             eprintln!("ipp-duplexd-fork: {e}");
-            eprintln!("{}", l10n::text(lang(), "daemon.usage"));
-            std::process::exit(2);
         }
+        eprintln!("{}", l10n::text(lang(), "daemon.usage"));
+        std::process::exit(2);
+    }
+}
+
+/// Read the command line's `--lang` first, so even the errors below are in the
+/// language the caller asked for.
+fn settle_language(argv: &[String]) -> Result<(), String> {
+    let code = match arg_value(argv, "--lang") {
+        Some(tag) => match l10n::normalize(&tag) {
+            Some(code) => code,
+            None => {
+                return Err(l10n::tr(
+                    l10n::FALLBACK,
+                    "daemon.err.bad_lang",
+                    &[("lang", tag), ("list", language_list())],
+                ))
+            }
+        },
+        None => l10n::from_env().unwrap_or(l10n::FALLBACK),
     };
+    let _ = LANG.set(l10n::apply(code));
+    Ok(())
+}
+
+fn run(argv: &[String]) -> Result<(), String> {
+    if argv.iter().any(|a| a == "-h" || a == "--help") {
+        return Err(String::new());
+    }
+    settle_language(argv)?;
     if Command::new("qpdf").arg("--version").output().is_err() {
         eprintln!("ipp-duplexd-fork: {}", t!("daemon.err.no_qpdf"));
         std::process::exit(1);
     }
-    let listener = match TcpListener::bind(&cfg.listen) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!(
-                "ipp-duplexd-fork: {}",
-                t!(
-                    "daemon.err.bind",
-                    addr = cfg.listen.as_str(),
-                    err = e.to_string()
-                )
-            );
-            std::process::exit(1);
+    // A configuration file wins over the single-printer flags; the default
+    // location is used when it exists, so a machine that was migrated keeps
+    // starting every printer it was told about.
+    let file = match arg_value(argv, "--config") {
+        Some(path) => Some(PathBuf::from(path)),
+        None => {
+            let default = cfg_file::Config::path();
+            if default.is_file() {
+                Some(default)
+            } else {
+                None
+            }
         }
     };
-    let (addr, port) = match listener.local_addr() {
-        Ok(a) => (a.to_string(), a.port()),
-        Err(_) => (cfg.listen.clone(), 631),
+    let (reload, reload_rx) = mpsc::channel::<()>();
+    let mut daemon = Daemon {
+        file: file.clone(),
+        reload,
+        running: HashMap::new(),
     };
-    log(&t!(
-        "daemon.log.listening",
-        addr = addr.as_str(),
-        name = cfg.name.as_str(),
-        uri = cfg.printer.uri.as_str()
-    ));
-    log(&t!(
-        "daemon.log.lpadmin",
-        name = cfg.name.as_str(),
-        port = port
-    ));
-    let ctx = Arc::new(Ctx {
-        cfg,
-        port,
-        jobs: Mutex::new(HashMap::new()),
-        next_id: AtomicI32::new(1),
-        flip: FlipGate {
-            requested: Mutex::new(false),
-            cv: Condvar::new(),
-        },
-        process_lock: Mutex::new(()),
-        attr_cache: Mutex::new(None),
-    });
-    for stream in listener.incoming() {
-        match stream {
-            Ok(s) => {
-                let ctx = ctx.clone();
-                std::thread::spawn(move || handle_client(ctx, s));
+    let printers = match &file {
+        Some(path) => {
+            let config = cfg_file::Config::load(path, lang())?.ok_or_else(|| {
+                t!(
+                    "daemon.err.config_missing",
+                    path = path.display().to_string()
+                )
+                .to_string()
+            })?;
+            config.validate(lang())?;
+            log(&t!(
+                "daemon.log.config_loaded",
+                count = config.printers.len(),
+                path = path.display().to_string()
+            ));
+            config.printers
+        }
+        None => vec![legacy_printer(argv)?],
+    };
+    daemon.apply(printers)?;
+    // The listener threads do the serving; this thread owns the printer list
+    // and applies `POST /reload` requests coming from any of them.
+    for _ in reload_rx {
+        daemon.reload();
+    }
+    Ok(())
+}
+
+/// One virtual printer that is currently serving.
+struct Running {
+    stop: Arc<AtomicBool>,
+    fingerprint: String,
+}
+
+/// The printers the process serves, plus the file it re-reads on reload.
+struct Daemon {
+    file: Option<PathBuf>,
+    reload: mpsc::Sender<()>,
+    running: HashMap<String, Running>,
+}
+
+/// The per-printer settings the workers use, built from a file entry.
+fn settings_of(printer: &cfg_file::Printer) -> Result<Settings, String> {
+    let uri = ipp::parse_uri(printer.real.trim()).map_err(|e| {
+        t!(
+            "daemon.err.bad_printer_uri",
+            uri = printer.real.as_str(),
+            err = e
+        )
+        .to_string()
+    })?;
+    Ok(Settings {
+        listen: printer.listen.trim().to_string(),
+        printer: uri,
+        name: printer.name.trim().to_string(),
+        blank: printer.blank.clone(),
+        auto_continue: printer.auto_continue,
+        rotate_even: printer.rotate_even,
+        poll: printer.poll,
+        gui: printer.gui,
+        settle: printer.settle,
+    })
+}
+
+impl Settings {
+    /// A cheap comparison key, so a reload only restarts what changed.
+    fn fingerprint(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            self.listen,
+            self.printer.uri,
+            self.name,
+            self.blank,
+            self.auto_continue,
+            self.rotate_even,
+            self.poll,
+            self.gui,
+            self.settle
+        )
+    }
+}
+
+fn bind_with_retry(addr: &str) -> Result<TcpListener, String> {
+    let mut last = String::new();
+    for _ in 0..20 {
+        match TcpListener::bind(addr) {
+            Ok(listener) => {
+                let _ = listener.set_nonblocking(true);
+                return Ok(listener);
             }
-            Err(e) => log(&t!("daemon.log.accept_error", err = e.to_string())),
+            Err(e) => {
+                last = e.to_string();
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
     }
+    Err(t!("daemon.err.bind", addr = addr, err = last).to_string())
+}
+
+impl Daemon {
+    /// Start one virtual printer: bind, log, and spawn its accept loop.
+    fn start(&mut self, printer: &cfg_file::Printer) -> Result<(), String> {
+        let settings = settings_of(printer)?;
+        let listener = bind_with_retry(&settings.listen)?;
+        let (addr, port) = match listener.local_addr() {
+            Ok(a) => (a.to_string(), a.port()),
+            Err(_) => (settings.listen.clone(), 631),
+        };
+        log(&t!(
+            "daemon.log.listening",
+            addr = addr.as_str(),
+            name = settings.name.as_str(),
+            uri = settings.printer.uri.as_str()
+        ));
+        log(&t!(
+            "daemon.log.lpadmin",
+            name = settings.name.as_str(),
+            port = port
+        ));
+        let stop = Arc::new(AtomicBool::new(false));
+        let ctx = Arc::new(Ctx {
+            cfg: settings.clone(),
+            port,
+            reload: self.reload.clone(),
+            jobs: Mutex::new(HashMap::new()),
+            next_id: AtomicI32::new(1),
+            flip: FlipGate {
+                requested: Mutex::new(false),
+                cv: Condvar::new(),
+            },
+            process_lock: Mutex::new(()),
+            attr_cache: Mutex::new(None),
+        });
+        serve(ctx, listener, stop.clone());
+        self.running.insert(
+            settings.name.clone(),
+            Running {
+                stop,
+                fingerprint: settings.fingerprint(),
+            },
+        );
+        Ok(())
+    }
+
+    /// Make the running printers match the wanted list.
+    fn apply(&mut self, printers: Vec<cfg_file::Printer>) -> Result<(), String> {
+        let mut wanted: HashMap<String, cfg_file::Printer> = HashMap::new();
+        for printer in printers {
+            wanted.insert(printer.name.trim().to_string(), printer);
+        }
+        let names: Vec<String> = self.running.keys().cloned().collect();
+        for name in names {
+            let keep = match wanted.get(&name) {
+                Some(printer) => settings_of(printer)
+                    .map(|settings| settings.fingerprint() == self.running[&name].fingerprint)
+                    .unwrap_or(false),
+                None => false,
+            };
+            if !keep {
+                if let Some(running) = self.running.remove(&name) {
+                    running.stop.store(true, Ordering::Relaxed);
+                    log(&t!("daemon.log.printer_stopped", name = name.as_str()));
+                }
+            }
+        }
+        let mut wanted: Vec<cfg_file::Printer> = wanted.into_values().collect();
+        wanted.sort_by(|a, b| a.name.cmp(&b.name));
+        for printer in wanted {
+            if self.running.contains_key(printer.name.trim()) {
+                continue;
+            }
+            self.start(&printer)?;
+        }
+        Ok(())
+    }
+
+    /// Re-read the configuration file and apply it.
+    fn reload(&mut self) {
+        let path = match self.file.clone() {
+            Some(path) => path,
+            None => {
+                log(&t!("daemon.log.reload_no_file"));
+                return;
+            }
+        };
+        let shown = path.display().to_string();
+        let config = match cfg_file::Config::load(&path, lang()) {
+            Ok(Some(config)) => config,
+            Ok(None) => {
+                log(&t!(
+                    "daemon.log.reload_failed",
+                    path = shown.as_str(),
+                    err = t!("daemon.err.config_missing", path = shown.as_str()).to_string()
+                ));
+                return;
+            }
+            Err(e) => {
+                log(&t!(
+                    "daemon.log.reload_failed",
+                    path = shown.as_str(),
+                    err = e.as_str()
+                ));
+                return;
+            }
+        };
+        if let Err(e) = config.validate(lang()) {
+            log(&t!(
+                "daemon.log.reload_failed",
+                path = shown.as_str(),
+                err = e.as_str()
+            ));
+            return;
+        }
+        let count = config.printers.len();
+        match self.apply(config.printers) {
+            Ok(()) => log(&t!(
+                "daemon.log.reload_ok",
+                path = shown.as_str(),
+                count = count
+            )),
+            Err(e) => log(&t!(
+                "daemon.log.reload_failed",
+                path = shown.as_str(),
+                err = e.as_str()
+            )),
+        }
+    }
+}
+
+/// Accept connections until told to stop, one thread per connection.
+fn serve(ctx: Arc<Ctx>, listener: TcpListener, stop: Arc<AtomicBool>) {
+    std::thread::spawn(move || loop {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        match listener.accept() {
+            Ok((stream, _)) => {
+                let _ = stream.set_nonblocking(false);
+                let ctx = ctx.clone();
+                std::thread::spawn(move || handle_client(ctx, stream));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                log(&t!("daemon.log.accept_error", err = e.to_string()));
+                return;
+            }
+        }
+    });
+}
+
+/// The single printer described by the command line, for machines that have no
+/// configuration file yet.
+fn legacy_printer(argv: &[String]) -> Result<cfg_file::Printer, String> {
+    let settings = config_from(argv)?;
+    Ok(cfg_file::Printer {
+        name: settings.name,
+        listen: settings.listen,
+        real: settings.printer.uri,
+        blank: settings.blank,
+        settle: settings.settle,
+        poll: settings.poll,
+        rotate_even: settings.rotate_even,
+        auto_continue: settings.auto_continue,
+        gui: settings.gui,
+    })
 }
 
 /// `--flag value` lookup, for the one option that must be understood before
@@ -196,28 +464,7 @@ fn language_list() -> String {
     l10n::describe_all()
 }
 
-fn parse_args() -> Result<Config, String> {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    // The language is settled before any other option, so even the argument
-    // errors below already come out in the requested language.
-    let code = match arg_value(&argv, "--lang") {
-        Some(tag) => match l10n::normalize(&tag) {
-            Some(code) => code,
-            None => {
-                return Err(l10n::tr(
-                    l10n::FALLBACK,
-                    "daemon.err.bad_lang",
-                    &[("lang", tag), ("list", language_list())],
-                ))
-            }
-        },
-        None => l10n::from_env().unwrap_or(l10n::FALLBACK),
-    };
-    let _ = LANG.set(l10n::apply(code));
-    config_from(&argv)
-}
-
-fn config_from(argv: &[String]) -> Result<Config, String> {
+fn config_from(argv: &[String]) -> Result<Settings, String> {
     let mut args = argv.iter();
     let mut listen = "127.0.0.1:6632".to_string();
     let mut printer = None;
@@ -288,7 +535,7 @@ fn config_from(argv: &[String]) -> Result<Config, String> {
     {
         log(&t!("daemon.log.nonloopback", addr = listen.as_str()));
     }
-    Ok(Config {
+    Ok(Settings {
         listen,
         printer: printer.ok_or_else(|| t!("daemon.err.printer_required").to_string())?,
         name,
@@ -371,6 +618,14 @@ fn handle_client(ctx: Arc<Ctx>, stream: TcpStream) {
         // IPP responses do not (see README, "What stays English").
         let lang = l10n::negotiate(&accept_language);
         let (status, ctype, resp): (&str, &str, Vec<u8>) = match (method.as_str(), path.as_str()) {
+            ("POST", "/reload") => {
+                let _ = ctx.reload.send(());
+                (
+                    "200 OK",
+                    "text/plain",
+                    format!("{}\n", t!("daemon.http.reloaded", locale = lang)).into_bytes(),
+                )
+            }
             ("POST", _) => match ipp::parse(&body) {
                 Ok(req) => {
                     let resp = handle_ipp(&ctx, req);

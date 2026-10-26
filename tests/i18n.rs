@@ -110,12 +110,18 @@ fn key_literals() -> BTreeSet<String> {
 }
 
 fn looks_like_a_key(piece: &str) -> bool {
-    matches!(
-        piece.split('.').next(),
-        Some("daemon") | Some("setup") | Some("gui")
-    ) && piece
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_')
+    // file names such as "config.toml" share the prefix but are not keys
+    let is_file_name = [".toml", ".tmp", ".yml", ".yaml", ".rs", ".conf"]
+        .iter()
+        .any(|suffix| piece.ends_with(suffix));
+    !is_file_name
+        && matches!(
+            piece.split('.').next(),
+            Some("daemon") | Some("setup") | Some("gui") | Some("config")
+        )
+        && piece
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_')
         && piece.matches('.').count() >= 1
 }
 
