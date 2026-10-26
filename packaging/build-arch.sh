@@ -13,7 +13,9 @@ rm -f packaging/arch/ipp-duplexd-fork-*.tar.gz
 tar czf "packaging/arch/ipp-duplexd-fork.tar.gz" \
     --transform "s,^,ipp-duplexd-fork/," \
     Cargo.toml Cargo.lock src locales docs README.md LICENSE \
-    packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
+    packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example \
+    packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
+    packaging/io.github.wraindrock.ipp_duplexd_fork.svg
 
 cd packaging/arch
 makepkg -f -C "$@"

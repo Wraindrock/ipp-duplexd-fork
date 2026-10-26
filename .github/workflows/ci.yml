@@ -60,7 +60,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build dependencies
-        run: dnf -y install cargo rust rpm-build make tar gzip qpdf createrepo_c gtk4-devel libadwaita-devel && dnf -y clean all
+        run: dnf -y install cargo rust rpm-build make tar gzip qpdf createrepo_c gtk4-devel libadwaita-devel desktop-file-utils && dnf -y clean all
 
       - uses: actions/checkout@v4
 
@@ -116,6 +116,21 @@ jobs:
           rpm -q ipp-duplexd-fork
           ipp-duplexd-fork --lang zh-CN 2>&1 | grep -q '必须指定 --printer'
 
+      # Installing the package has to put the window in the application menu;
+      # without the entry and its icon the program is only reachable by hand.
+      - name: The package appears in the desktop's application menu
+        run: |
+          set -eux
+          entry=/usr/share/applications/io.github.wraindrock.ipp_duplexd_fork.desktop
+          icon=/usr/share/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg
+          test -f "$entry"
+          test -s "$icon"
+          grep -qx 'Type=Application' "$entry"
+          grep -qx 'Exec=ipp-duplexd-fork-gui' "$entry"
+          grep -qx 'Icon=io.github.wraindrock.ipp_duplexd_fork' "$entry"
+          desktop-file-validate "$entry"
+          command -v ipp-duplexd-fork-gui
+
   # The GTK4 front end is an optional feature, so it gets its own job: the
   # default build above stays dependency-free, and this one proves the dialog
   # compiles and answers correctly under a headless X server.
@@ -128,7 +143,7 @@ jobs:
       - name: Install GTK4, Xvfb and qpdf
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev xvfb qpdf
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev xvfb qpdf desktop-file-utils
 
       - name: Clippy
         run: cargo clippy --all-targets --features gui -- -D warnings
@@ -138,6 +153,11 @@ jobs:
 
       - name: Test
         run: cargo test --features gui
+
+      # The application menu entry is a build artifact too: validate it here so
+      # a broken one fails before it reaches a package.
+      - name: The desktop entry is valid
+        run: desktop-file-validate packaging/io.github.wraindrock.ipp_duplexd_fork.desktop
 
       # The daemon reads the dialog's exit code: zero means "print the backs",
       # anything else leaves the job waiting. Drive the real widgets under

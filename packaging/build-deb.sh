@@ -19,6 +19,10 @@ install -Dm755 target/release/ipp-duplexd-fork "$stage/usr/bin/ipp-duplexd-fork"
 install -Dm755 target/release/ipp-duplexd-fork-setup "$stage/usr/bin/ipp-duplexd-fork-setup"
 install -Dm755 target/release/ipp-duplexd-fork-gui "$stage/usr/bin/ipp-duplexd-fork-gui"
 install -Dm644 packaging/ipp-duplexd-fork.service "$stage/usr/lib/systemd/user/ipp-duplexd-fork.service"
+install -Dm644 packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
+    "$stage/usr/share/applications/io.github.wraindrock.ipp_duplexd_fork.desktop"
+install -Dm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
+    "$stage/usr/share/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg"
 install -Dm644 packaging/ipp-duplexd-fork.conf.example "$stage/usr/share/doc/ipp-duplexd-fork/ipp-duplexd-fork.conf.example"
 install -Dm644 README.md "$stage/usr/share/doc/ipp-duplexd-fork/README.md"
 

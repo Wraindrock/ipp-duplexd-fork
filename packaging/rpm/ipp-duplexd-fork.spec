@@ -99,6 +99,10 @@ install -Dpm755 target/release/ipp-duplexd-fork %{buildroot}%{_bindir}/ipp-duple
 install -Dpm755 target/release/ipp-duplexd-fork-setup %{buildroot}%{_bindir}/ipp-duplexd-fork-setup
 install -Dpm755 target/release/ipp-duplexd-fork-gui %{buildroot}%{_bindir}/ipp-duplexd-fork-gui
 install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/ipp-duplexd-fork.service
+install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
+    %{buildroot}%{_datadir}/applications/io.github.wraindrock.ipp_duplexd_fork.desktop
+install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
+    %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg
 
 # tests/ and %check are left out on purpose: the end-to-end suite needs qpdf
 # and a mock printer, which belongs in CI (packaging/*.sh run it), not in
@@ -112,8 +116,15 @@ install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/i
 %{_bindir}/ipp-duplexd-fork-setup
 %{_bindir}/ipp-duplexd-fork-gui
 %{_userunitdir}/ipp-duplexd-fork.service
+%{_datadir}/applications/io.github.wraindrock.ipp_duplexd_fork.desktop
+%{_datadir}/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg
 
 %changelog
+
+* Tue Oct 27 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.27-1
+- Install the desktop entry and the application icon, so the window appears in
+  the desktop's application menu and its windows carry the right icon. The
+  RPM used to ship only the binaries and the systemd unit.
 
 * Mon Oct 26 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.26-1
 - Versions are dates now: YYYY.MM.DD-N, where N counts the builds cut that

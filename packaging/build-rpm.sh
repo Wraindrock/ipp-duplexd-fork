@@ -30,7 +30,9 @@ mkdir -p "$top/BUILD" "$top/BUILDROOT" "$top/RPMS" "$top/SOURCES" "$top/SPECS" "
 tar czf "$top/SOURCES/ipp-duplexd-fork.tar.gz" \
     --transform "s,^,ipp-duplexd-fork/," \
     Cargo.toml Cargo.lock src locales docs README.md LICENSE \
-    packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
+    packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example \
+    packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
+    packaging/io.github.wraindrock.ipp_duplexd_fork.svg
 
 # --nodeps: the BuildRequires above are what a distribution build checks;
 # this script must also work on a host without an RPM database (the same way
@@ -67,6 +69,12 @@ has /usr/bin/ipp-duplexd-fork || problems+=("no /usr/bin/ipp-duplexd-fork")
 has /usr/bin/ipp-duplexd-fork-setup || problems+=("no /usr/bin/ipp-duplexd-fork-setup")
 has /usr/bin/ipp-duplexd-fork-gui || problems+=("no /usr/bin/ipp-duplexd-fork-gui")
 has /usr/lib/systemd/user/ipp-duplexd-fork.service || problems+=("no systemd user unit")
+# Without these two the program installs but never appears in the desktop's
+# application menu, which is how people start the window.
+has /usr/share/applications/io.github.wraindrock.ipp_duplexd_fork.desktop \
+    || problems+=("no desktop entry")
+has /usr/share/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg \
+    || problems+=("no application icon")
 # Fedora puts docs in /usr/share/doc/ipp-duplexd-fork-<version>/, other layouts use
 # a fixed /usr/share/doc/ipp-duplexd-fork/, so only the file name and the directory
 # prefix are checked

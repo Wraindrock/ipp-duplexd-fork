@@ -31,7 +31,9 @@ rel      := 1
 endif
 distname := ipp-duplexd-fork-$(version)
 sources  := Cargo.toml Cargo.lock src locales docs README.md LICENSE \
-            packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example
+            packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example \
+            packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
+            packaging/io.github.wraindrock.ipp_duplexd_fork.svg
 outdir   := $(abspath $(outdir))
 
 .PHONY: srpm check

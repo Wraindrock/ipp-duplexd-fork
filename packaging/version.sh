@@ -6,7 +6,8 @@
 # The counter is not decoration: it keeps two builds of one day apart and makes
 # them sort in the order they were cut, so "the newest build wins" also holds
 # when several land on a single day. The date is the local date at the moment
-# the release is cut.
+# the release is cut, so honour TZ when cutting from another timezone:
+# TZ=Asia/Shanghai packaging/version.sh next
 #
 # Usage:
 #   packaging/version.sh next             the version today's next build gets

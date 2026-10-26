@@ -59,7 +59,9 @@ Versions are dates, not promises: `2026.10.26-3` is the third build cut on
 the order they were cut.
 
 `packaging/version.sh next` prints the version today's next build gets (it
-counts today's tags), `packaging/version.sh set [version]` writes it to
+counts today's tags; it uses the local date, so set `TZ` when cutting from
+another timezone, e.g. `TZ=Asia/Shanghai ./packaging/version.sh next`),
+`packaging/version.sh set [version]` writes it to
 `Cargo.toml` and `Cargo.lock`, and `packaging/version.sh check [tag]` proves
 that a tree and a tag agree — CI and the release workflow both run it, so a
 mismatch fails before anything is published. `packaging/release.sh` does a
@@ -230,6 +232,12 @@ application it follows the desktop's **light/dark colour scheme
 automatically** — there is no theme setting in ipp-duplexd-fork, and accent
 colour and high contrast come along for free. (For a one-off override,
 libadwaita honours `ADW_DEBUG_COLOR_SCHEME=prefer-dark` or `prefer-light`.)
+
+The packages install an application-menu entry (**ipp-duplexd fork**, with the
+icon below) so the window can be started by clicking it; the XML application id
+is `io.github.wraindrock.ipp_duplexd_fork`, which is also the name of the
+installed `.desktop` file, so the desktop groups the windows under that entry.
+The AppImage carries the same two files at the image root.
 
 Start it with no arguments (from your desktop menu, or in a terminal **without
 `sudo`**) and it opens the manager window. Everything the command line can do

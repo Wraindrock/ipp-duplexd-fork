@@ -78,8 +78,10 @@ for binary in ipp-duplexd-fork ipp-duplexd-fork-gui ipp-duplexd-fork-setup; do
     install -m 0755 "$target_dir/release/$binary" "$appdir/usr/bin/$binary"
 done
 install -m 0755 packaging/appimage/AppRun "$appdir/AppRun"
-install -m 0644 packaging/appimage/ipp-duplexd-fork.desktop "$appdir/ipp-duplexd-fork.desktop"
-install -m 0644 packaging/appimage/ipp-duplexd-fork.svg "$appdir/ipp-duplexd-fork.svg"
+install -m 0644 packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
+    "$appdir/io.github.wraindrock.ipp_duplexd_fork.desktop"
+install -m 0644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
+    "$appdir/io.github.wraindrock.ipp_duplexd_fork.svg"
 
 # APPIMAGE_EXTRACT_AND_RUN keeps the tools usable on machines without FUSE
 # (containers, minimal installs), which is also where this script tends to run.
@@ -109,8 +111,11 @@ for library in libgtk-4.so libadwaita-1.so; do
         problems+=("$library is bundled; the window must use the desktop's copy")
     fi
 done
-if [ ! -f "$root/ipp-duplexd-fork.desktop" ]; then
+if [ ! -f "$root/io.github.wraindrock.ipp_duplexd_fork.desktop" ]; then
     problems+=("no desktop entry at the image root")
+fi
+if [ ! -f "$root/io.github.wraindrock.ipp_duplexd_fork.svg" ]; then
+    problems+=("no application icon at the image root")
 fi
 
 # The behaviour: a portable image must still speak its languages, and the
