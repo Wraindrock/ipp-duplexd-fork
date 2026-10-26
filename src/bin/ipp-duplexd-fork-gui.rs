@@ -28,6 +28,7 @@ use ipp_duplexd_fork::config as cfg_file;
 use ipp_duplexd_fork::discover;
 use ipp_duplexd_fork::gui::{self, Mode};
 use ipp_duplexd_fork::l10n;
+use ipp_duplexd_fork::queues;
 use ipp_duplexd_fork::service;
 use libadwaita as adw;
 use rust_i18n::t;
@@ -238,6 +239,11 @@ fn run_window(locale: &'static str, window_test: bool, add_test: bool) -> Result
 
         rebuild(&state);
         window.present();
+
+        // Printers configured in an earlier session may not be in CUPS yet
+        // (the window used to only start the listener); register them so the
+        // desktop's printer settings list them.
+        register_queues(&state);
 
         if add_test {
             // The Xvfb smoke test also opens the "+" dialog, so the detection
@@ -508,6 +514,29 @@ fn restart_service(state: &Rc<State>) {
     }
 }
 
+/// Put every printer the daemon answers for into CUPS as a driverless queue,
+/// which is what the desktop's printer settings list. A printer whose daemon
+/// does not answer is skipped: `lpadmin -m everywhere` has to ask it.
+fn register_queues(state: &Rc<State>) {
+    let locale = state.locale.get();
+    let printers = gui::queues_to_register(&state.config.borrow().printers, |addr| {
+        gui::http_get(addr, "/", locale).is_ok()
+    });
+    let mut failures = Vec::new();
+    for printer in printers {
+        if let Err(e) = queues::ensure(&printer.name, &printer.listen) {
+            failures.push(l10n::tr(
+                locale,
+                "gui.window.queue_failed",
+                &[("name", printer.name.clone()), ("err", e)],
+            ));
+        }
+    }
+    if !failures.is_empty() {
+        toast(state, &failures.join("; "));
+    }
+}
+
 fn set_language(state: &Rc<State>, code: &'static str) {
     if state.locale.get() == code {
         return;
@@ -556,6 +585,9 @@ fn commit(state: &Rc<State>) {
         }
     } else {
         toast(state, &l10n::text(locale, "gui.window.saved"));
+        // The daemon has the printers now; CUPS needs a queue per printer or
+        // the desktop's printer settings stay empty.
+        register_queues(state);
     }
     idle_rebuild(state);
 }
@@ -744,6 +776,7 @@ fn confirm_remove(state: &Rc<State>, index: usize) {
         .get(index)
         .map(|printer| printer.name.clone())
         .unwrap_or_default();
+    let queue_name = name.clone();
 
     let dialog = adw::AlertDialog::builder()
         .heading(l10n::tr(
@@ -770,6 +803,18 @@ fn confirm_remove(state: &Rc<State>, index: usize) {
             }
             state.config.replace(candidate);
             commit(&state);
+            // The queue is what the desktop lists; leaving it behind would
+            // keep a dead printer in the settings.
+            if let Err(e) = queues::remove(&queue_name) {
+                toast(
+                    &state,
+                    &l10n::tr(
+                        locale,
+                        "gui.window.queue_removed_failed",
+                        &[("name", queue_name.clone()), ("err", e)],
+                    ),
+                );
+            }
         });
     }
 

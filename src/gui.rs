@@ -281,6 +281,21 @@ pub fn printer_from_detected(
     )
 }
 
+/// The printers that belong in CUPS: those whose daemon answers. `lpadmin -m
+/// everywhere` asks the printer what it can do, so a printer that is not
+/// listening yet cannot be registered — it is tried again the next time the
+/// window opens or a change is saved.
+pub fn queues_to_register<Answers: Fn(&str) -> bool>(
+    printers: &[crate::config::Printer],
+    answers: Answers,
+) -> Vec<crate::config::Printer> {
+    printers
+        .iter()
+        .filter(|printer| answers(&printer.listen))
+        .cloned()
+        .collect()
+}
+
 /// "127.0.0.1:6632 → ipp://127.0.0.1:631/printers/laser", for a printer row.
 pub fn row_detail(locale: &str, listen: &str, real: &str) -> String {
     l10n::tr(
@@ -396,6 +411,26 @@ mod tests {
         assert_eq!(printer.name, "office-laser-duplex-2");
         assert_eq!(printer.listen, "127.0.0.1:6633");
         assert_eq!(printer.real, "ipp://127.0.0.1:631/printers/Office Laser");
+    }
+
+    #[test]
+    fn only_printers_that_answer_are_registered_with_cups() {
+        let alpha = crate::config::Printer::new(
+            "alpha",
+            "127.0.0.1:6632",
+            "ipp://127.0.0.1:631/printers/laser",
+        );
+        let beta = crate::config::Printer::new(
+            "beta",
+            "127.0.0.1:6633",
+            "ipp://127.0.0.1:631/printers/inkjet",
+        );
+        let printers = vec![alpha.clone(), beta];
+        let answering = |addr: &str| addr == "127.0.0.1:6632";
+        let queued = queues_to_register(&printers, answering);
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].name, "alpha");
+        assert_eq!(queued[0].listen, "127.0.0.1:6632");
     }
 
     #[test]

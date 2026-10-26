@@ -246,6 +246,14 @@ is there, as one tree:
   and `ipp://127.0.0.1:631/printers/<queue>` as the printer behind it. The name,
   address and URI are still there under **Advanced**, folded away unless
   nothing was detected; that is also how to reach a printer CUPS does not know.
+  Adding (or editing) a printer also registers it **in CUPS**, so it shows up
+  in your desktop's printer settings (GNOME Settings → Printers) and any
+  application can print to it: the window runs
+  `lpadmin -p NAME -E -v ipp://ADDR/ipp/print -m everywhere`, the same call the
+  setup wizard makes. It needs `cups-client` (for `lpadmin`) and a printer that
+  answers; a printer whose daemon is not running is registered the next time
+  the window starts, which also repairs printers created by earlier versions.
+  Removing a printer removes its CUPS queue too.
 - **Service** — what `systemctl --user` says about
   `ipp-duplexd-fork.service`, and a button that restarts it.
 - **Settings** — the language of the window (and, after the next restart, of

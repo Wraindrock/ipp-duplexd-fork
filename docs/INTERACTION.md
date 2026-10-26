@@ -25,15 +25,19 @@ widget named here comes from libadwaita itself:
 | Layer | Here |
 | --- | --- |
 | Behaviour (the source of truth) | the daemon: `src/main.rs`, `src/ipp.rs` |
-| Shared vocabulary and helpers | `src/lib.rs` (`ipp`, `l10n`) and `src/gui.rs` (requests, strings, exit codes) |
+| Shared vocabulary and helpers | `src/lib.rs` (`ipp`, `l10n`, `config`, `queues`, `service`, `discover`) and `src/gui.rs` (requests, strings, exit codes) |
 | Desktop front end | `src/bin/ipp-duplexd-fork-gui.rs` |
 | Terminal front ends | the daemon CLI and `src/bin/ipp-duplexd-fork-setup.rs` |
 | Declarative templates | phase B below (phase A builds the same tree in code) |
 
 The rule that makes this an architecture rather than a style choice: **a front
 end may only do what the core can already do, and the core is the daemon.** The
-GUI is a client of the daemon's HTTP interface; it never reads the config file,
-never talks to CUPS, and never keeps state of its own.
+GUI is a client of the daemon's HTTP interface; the two things it does on its
+own are the ones the daemon cannot do for itself — it edits the configuration
+file through the shared validator in `src/config.rs`, and it registers the CUPS
+queue with `lpadmin` (`src/queues.rs`), because a queue is how the desktop lists
+a printer. Everything else it shows comes from the daemon, and it keeps no state
+of its own beyond the window's copy of the file.
 
 The toolkits and bindings are always the newest official ones this project can
 package against; [docs/UI-FRAMEWORK.md](UI-FRAMEWORK.md) records the versions and
@@ -57,8 +61,8 @@ there, and the other fronts call it.
 | Show status | `ipp-duplexd-fork` log line, `GET /` | Status page (fetched with the window's `Accept-Language`) | yes | — |
 | Refresh | `GET /` | Header bar button, also every 2 s | yes (idempotent) | — |
 | Print the backs | `GET /flip` | The printer row's "print the backs" button → toast | **no** | only offered while that printer has a job waiting |
-| Add a virtual printer | a new `[[printer]]` in `config.toml` | `+` → the queues CUPS reports; pick one and it is added; name/address/URI live under **Advanced** | **no** | shared validator; unique name and address; never written over an unparseable file |
-| Remove a virtual printer | delete the `[[printer]]` | Row action with a destructive confirmation | **no** | confirmation dialog, cancel is the close response |
+| Add a virtual printer | a new `[[printer]]` in `config.toml`, plus `lpadmin -p NAME -E -v ipp://ADDR/ipp/print -m everywhere` so the desktop lists it | `+` → the queues CUPS reports; pick one and it is added; name/address/URI live under **Advanced** | **no** | shared validator; unique name and address; never written over an unparseable file; the queue is registered only after the daemon answers for it |
+| Remove a virtual printer | delete the `[[printer]]`, then `lpadmin -x NAME` | Row action with a destructive confirmation | **no** | confirmation dialog, cancel is the close response; the queue goes with it |
 | Choose the language | `--lang`, `IPP_DUPLEXD_FORK_LANG`, `LC_*` | Settings → language row; applied to the window at once, to the daemon on restart | config | list comes from the catalogs |
 | Printer address, port, settle time | `--printer`, `--listen`, `--settle`, `config.toml` | The printer editor writes `config.toml`; the daemon re-reads it on `POST /reload` | config | shared validator, atomic write, `0600` |
 | Restart the service | `systemctl --user restart ipp-duplexd-fork` | Service row button, used when no daemon answers a reload | **no** | — |

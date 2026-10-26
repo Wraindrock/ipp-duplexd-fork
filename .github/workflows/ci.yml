@@ -169,6 +169,37 @@ jobs:
           xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=add \
             ./target/debug/ipp-duplexd-fork-gui --lang zh-CN
 
+      # A printer the window knows about must also reach CUPS, or the desktop's
+      # printer settings stay empty. A stub lpadmin records what it was told.
+      - name: A configured printer is registered with CUPS
+        run: |
+          set -eux
+          dir=$(mktemp -d)
+          cat > "$dir/config.toml" <<'EOF'
+          [[printer]]
+          name = "smoke-duplex"
+          listen = "127.0.0.1:6699"
+          real = "ipp://127.0.0.1:9/print"
+          EOF
+          IPP_DUPLEXD_FORK_CONFIG="$dir/config.toml" \
+            ./target/debug/ipp-duplexd-fork --config "$dir/config.toml" &
+          daemon=$!
+          for _ in $(seq 1 50); do
+            if curl -sf http://127.0.0.1:6699/ >/dev/null; then break; fi
+            sleep 0.1
+          done
+          printf '#!/bin/sh\necho "$@" >> "%s/calls"\n' "$dir" > "$dir/lpadmin"
+          printf '#!/bin/sh\nexit 0\n' > "$dir/lpstat"
+          chmod +x "$dir/lpadmin" "$dir/lpstat"
+          IPP_DUPLEXD_FORK_LPADMIN="$dir/lpadmin" \
+            IPP_DUPLEXD_FORK_LPSTAT="$dir/lpstat" \
+            IPP_DUPLEXD_FORK_CONFIG="$dir/config.toml" \
+            xvfb-run -a env IPP_DUPLEXD_FORK_GUI_TEST=window \
+              ./target/debug/ipp-duplexd-fork-gui --lang en
+          kill "$daemon"
+          grep -q -- '-p smoke-duplex' "$dir/calls"
+          grep -q 'ipp://127.0.0.1:6699/ipp/print' "$dir/calls"
+
       # No display: the daemon must not mistake that for a confirmation.
       - name: Without a display the dialog says so and exits 2
         run: |

@@ -5,6 +5,7 @@ pub mod discover;
 pub mod gui;
 pub mod ipp;
 pub mod l10n;
+pub mod queues;
 pub mod service;
 
 rust_i18n::i18n!("locales", fallback = "en");
