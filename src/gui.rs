@@ -76,6 +76,12 @@ pub fn window_test(raw: Option<&str>) -> bool {
     raw == Some("window")
 }
 
+/// The same hook, but for the "+" dialog: the smoke test opens it so the
+/// detection list is built for real instead of only being compiled.
+pub fn add_test(raw: Option<&str>) -> bool {
+    raw == Some("add")
+}
+
 /// Parse the helper's command line. `default_lang` is the environment's choice
 /// (passed in rather than read here, so tests are not at the mercy of the
 /// environment they run in).
@@ -528,6 +534,8 @@ mod tests {
         assert!(window_test(Some("window")));
         assert!(!window_test(Some("accept")));
         assert!(!window_test(None));
+        assert!(add_test(Some("add")));
+        assert!(!add_test(Some("window")));
     }
 
     #[test]

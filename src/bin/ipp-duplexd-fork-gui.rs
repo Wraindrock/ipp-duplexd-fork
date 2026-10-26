@@ -49,6 +49,7 @@ fn main() -> ExitCode {
     let hook = std::env::var(gui::TEST_ENV).ok();
     let answer = gui::test_answer(hook.as_deref());
     let window_test = gui::window_test(hook.as_deref());
+    let add_test = gui::add_test(hook.as_deref());
     let args = match gui::parse_args(std::env::args().skip(1), default_lang, answer) {
         Ok(args) => args,
         Err(e) => {
@@ -76,7 +77,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Mode::Window => match run_window(args.lang, window_test) {
+        Mode::Window => match run_window(args.lang, window_test, add_test) {
             Ok(code) => ExitCode::from(code),
             Err(e) => {
                 eprintln!("{}: {e}", gui::NAME);
@@ -170,7 +171,7 @@ fn run_flip_dialog(
 /// re-read it (`POST /reload`); when nobody answers, restart the user service.
 /// The window never talks to the real printer itself and never holds state the
 /// file does not have.
-fn run_window(locale: &'static str, window_test: bool) -> Result<u8, String> {
+fn run_window(locale: &'static str, window_test: bool, add_test: bool) -> Result<u8, String> {
     adw::init().map_err(|e| {
         l10n::tr(
             locale,
@@ -238,12 +239,21 @@ fn run_window(locale: &'static str, window_test: bool) -> Result<u8, String> {
         rebuild(&state);
         window.present();
 
-        if window_test {
+        if add_test {
+            // The Xvfb smoke test also opens the "+" dialog, so the detection
+            // list and the collapsed "Advanced" section are built for real.
+            let state = state.clone();
+            glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                editor(&state, None);
+            });
+        }
+        if window_test || add_test {
             // The Xvfb smoke test needs the real window to be built and shown,
             // then to go away without a user.
             let window = window.clone();
             let app = app.clone();
-            glib::timeout_add_local_once(Duration::from_millis(400), move || {
+            let delay = if add_test { 1200 } else { 400 };
+            glib::timeout_add_local_once(Duration::from_millis(delay), move || {
                 window.close();
                 app.quit();
             });
