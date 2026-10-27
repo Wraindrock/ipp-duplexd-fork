@@ -447,6 +447,12 @@ For permanent use, set it up as described in [Setup](#setup) above
 (`ipp-duplexd-fork-setup` is built alongside as `target/release/ipp-duplexd-fork-setup`,
 and writes the user unit for you if the packaged one is absent).
 
+## Development
+
+The toolchain recipe for this workstation, the list of checks, the release
+procedure and the operational gotchas are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Nothing there is required to *use* the program.
+
 ## Formatting
 
 Code is formatted with `rustfmt` (`cargo fmt`). If you use
