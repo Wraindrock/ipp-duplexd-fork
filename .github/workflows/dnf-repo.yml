@@ -122,6 +122,20 @@ jobs:
           # them, and a real system does not. The binaries above are checked
           # both ways because they are what has to work.
 
+      # The published package has to bring the application-menu entry; without
+      # it the window is only reachable from a terminal.
+      - name: The package appears in the desktop's application menu
+        run: |
+          set -eux
+          entry=/usr/share/applications/io.github.wraindrock.ipp_duplexd_fork.desktop
+          icon=/usr/share/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg
+          test -f "$entry"
+          test -s "$icon"
+          grep -qx 'Exec=ipp-duplexd-fork-gui' "$entry"
+          grep -qx 'Icon=io.github.wraindrock.ipp_duplexd_fork' "$entry"
+          dnf -y install desktop-file-utils
+          desktop-file-validate "$entry"
+
       - name: The binary still speaks both languages
         run: |
           en="$(ipp-duplexd-fork 2>&1 || true)"
