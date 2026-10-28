@@ -248,8 +248,15 @@ fn run_window(locale: &'static str, hooks: Hooks) -> Result<u8, String> {
         let add = icon_button("list-add-symbolic", &labels.add_tooltip);
         header.pack_end(&add);
 
+        let stack = adw::ViewStack::new();
+        let switcher = adw::ViewSwitcher::builder()
+            .stack(&stack)
+            .policy(adw::ViewSwitcherPolicy::Wide)
+            .build();
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&header);
+        toolbar.add_top_bar(&switcher);
+        toolbar.set_content(Some(&stack));
 
         let overlay = adw::ToastOverlay::new();
         overlay.set_child(Some(&toolbar));
@@ -262,7 +269,7 @@ fn run_window(locale: &'static str, hooks: Hooks) -> Result<u8, String> {
             file_error: file_error.clone(),
             probe_failed: Cell::new(false),
             window: window.clone(),
-            toolbar: toolbar.clone(),
+            stack,
             overlay: overlay.clone(),
         });
 
@@ -335,7 +342,8 @@ struct State {
     path: PathBuf,
     config: RefCell<cfg_file::Config>,
     window: adw::ApplicationWindow,
-    toolbar: adw::ToolbarView,
+    /// Printers and Jobs: the two views the switcher in the header flips.
+    stack: adw::ViewStack,
     overlay: adw::ToastOverlay,
     /// Set when the file exists but could not be read: the window shows the
     /// error and refuses to save until the file is fixed.
@@ -349,8 +357,17 @@ struct State {
 /// Rebuild the page from the configuration in `state`. Cheap enough to do
 /// after every change, and it keeps the widgets and the file from drifting.
 fn rebuild(state: &Rc<State>) {
-    let page = build_page(state);
-    state.toolbar.set_content(Some(&page));
+    let locale = state.locale.get();
+    let labels = gui::window_labels(locale);
+    while let Some(child) = state.stack.first_child() {
+        state.stack.remove(&child);
+    }
+    state
+        .stack
+        .add_titled(&build_page(state), Some("printers"), &labels.printers_title);
+    state
+        .stack
+        .add_titled(&jobs_page(state), Some("jobs"), &labels.jobs_title);
 }
 
 fn build_page(state: &Rc<State>) -> adw::PreferencesPage {
@@ -661,6 +678,19 @@ fn diagnostics_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Pref
         });
     }
     row.add_suffix(&open);
+
+    // Queue registration runs at start-up and fails quietly (one toast); a
+    // button here makes it repeatable without restarting the window.
+    let retry = adw::ActionRow::builder().title(&labels.queue_retry).build();
+    let again = gtk::Button::with_label(&labels.refresh);
+    again.add_css_class("flat");
+    {
+        let state = state.clone();
+        again.connect_clicked(move |_| register_queues(&state));
+    }
+    retry.add_suffix(&again);
+    group.add(&retry);
+
     group.add(&row);
     group
 }
@@ -695,7 +725,13 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
 
     for (index, (name, listen, real)) in printers.iter().enumerate() {
         let conflict = hplip::conflict_for(real, &known_queues, ipp_usb);
-        let mut subtitle = gui::row_detail(locale, listen, real);
+        let state_text = match gui::printer_state_at(listen) {
+            Some(3) => l10n::text(locale, "gui.window.state_idle"),
+            Some(4) => l10n::text(locale, "gui.window.state_busy"),
+            Some(_) => l10n::text(locale, "gui.window.state_stopped"),
+            None => l10n::text(locale, "gui.window.state_unknown"),
+        };
+        let mut subtitle = format!("{} · {state_text}", gui::row_detail(locale, listen, real));
         if let Some(conflict) = &conflict {
             subtitle.push('\n');
             subtitle.push_str(&l10n::tr(
@@ -708,9 +744,7 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             .title(name)
             .subtitle(&subtitle)
             .build();
-        if conflict.is_some() {
-            row.set_subtitle_lines(3);
-        }
+        row.set_subtitle_lines(if conflict.is_some() { 3 } else { 1 });
 
         if let Some(conflict) = conflict.clone() {
             let fix = icon_button("dialog-warning-symbolic", &labels.hplip_tooltip);
@@ -754,6 +788,123 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
     }
 
     group
+}
+
+/// The Jobs view: the same group, on its own page behind the switcher.
+fn jobs_page(state: &Rc<State>) -> adw::PreferencesPage {
+    let labels = gui::window_labels(state.locale.get());
+    let page = adw::PreferencesPage::new();
+    page.add(&jobs_group(state, &labels));
+    page
+}
+
+/// Every virtual printer's current jobs, read from the daemon itself (the
+/// same `Get-Jobs` any IPP client would use), with a cancel button per job.
+fn jobs_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {
+    let locale = state.locale.get();
+    let group = adw::PreferencesGroup::new();
+    group.set_title(&labels.jobs_title);
+    let refresh = gtk::Button::from_icon_name("view-refresh-symbolic");
+    refresh.add_css_class("flat");
+    refresh.set_tooltip_text(Some(&labels.refresh));
+    {
+        let state = state.clone();
+        refresh.connect_clicked(move |_| rebuild(&state));
+    }
+    group.set_header_suffix(Some(&refresh));
+
+    let printers: Vec<(String, String)> = state
+        .config
+        .borrow()
+        .printers
+        .iter()
+        .map(|printer| (printer.name.clone(), printer.listen.clone()))
+        .collect();
+    if printers.is_empty() {
+        return group;
+    }
+
+    for (name, listen) in printers {
+        match gui::jobs_at(&listen) {
+            Ok(jobs) if jobs.is_empty() => {
+                let row = adw::ActionRow::builder()
+                    .title(&name)
+                    .subtitle(l10n::tr(
+                        locale,
+                        "gui.window.jobs_none",
+                        &[("name", name.clone())],
+                    ))
+                    .build();
+                group.add(&row);
+            }
+            Ok(jobs) => {
+                for job in jobs {
+                    let row = adw::ActionRow::builder()
+                        .title(l10n::tr(
+                            locale,
+                            "gui.window.job_row",
+                            &[("id", job.id.to_string()), ("name", job.name.clone())],
+                        ))
+                        .subtitle(l10n::tr(
+                            locale,
+                            "gui.window.job_detail",
+                            &[("user", job.user.clone()), ("message", job.message.clone())],
+                        ))
+                        .build();
+                    row.set_subtitle_lines(2);
+                    let cancel = gtk::Button::with_label(&labels.job_cancel);
+                    cancel.add_css_class("flat");
+                    cancel.add_css_class("destructive-action");
+                    {
+                        let state = state.clone();
+                        let addr = listen.clone();
+                        let id = job.id;
+                        cancel.connect_clicked(move |_| cancel_job(&state, &addr, id));
+                    }
+                    row.add_suffix(&cancel);
+                    group.add(&row);
+                }
+            }
+            Err(e) => {
+                let row = adw::ActionRow::builder()
+                    .title(&name)
+                    .subtitle(l10n::tr(
+                        locale,
+                        "gui.window.jobs_failed",
+                        &[("name", name.clone()), ("err", e)],
+                    ))
+                    .build();
+                row.set_subtitle_lines(2);
+                group.add(&row);
+            }
+        }
+    }
+    group
+}
+
+fn cancel_job(state: &Rc<State>, addr: &str, id: i32) {
+    let locale = state.locale.get();
+    match gui::cancel_job_at(addr, id) {
+        Ok(()) => {
+            toast(
+                state,
+                &l10n::tr(
+                    locale,
+                    "gui.window.job_cancelled",
+                    &[("id", id.to_string())],
+                ),
+            );
+            rebuild(state);
+        }
+        Err(e) => toast(
+            state,
+            &l10n::tr(
+                locale,
+                "gui.window.job_cancel_failed",
+                &[("id", id.to_string()), ("err", e)],
+            ),
+        ),
+    }
 }
 
 /// Offer to point a hplip queue at ipp-usb. Nothing is uninstalled: the old
@@ -1179,6 +1330,44 @@ fn commit(state: &Rc<State>) {
 }
 
 /// Add (`None`) or edit (`Some(index)`) one virtual printer.
+/// A whole-number spin row for a number of seconds.
+fn spin_row(title: &str, subtitle: &str, value: u64, min: f64, max: f64) -> adw::SpinRow {
+    let row = adw::SpinRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .build();
+    row.set_adjustment(Some(&gtk::Adjustment::new(
+        value as f64,
+        min,
+        max,
+        1.0,
+        10.0,
+        0.0,
+    )));
+    row.set_climb_rate(1.0);
+    row.set_digits(0);
+    row.set_value(value as f64);
+    row
+}
+
+/// The combo entry for a `blank` value.
+fn blank_index(blank: &str) -> u32 {
+    match blank {
+        "trailing" => 1,
+        "none" => 2,
+        _ => 0,
+    }
+}
+
+/// The `blank` value behind a combo entry.
+fn blank_value(index: u32) -> &'static str {
+    match index {
+        1 => "trailing",
+        2 => "none",
+        _ => "leading",
+    }
+}
+
 fn editor(state: &Rc<State>, index: Option<usize>) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);
@@ -1215,6 +1404,66 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         None => labels.dialog_add.clone(),
     };
 
+    // The per-printer knobs the daemon has always had: until now they were
+    // only reachable by editing config.toml by hand.
+    let current = match index {
+        Some(index) => state.config.borrow().printers[index].clone(),
+        None => cfg_file::Printer::new("", "", ""),
+    };
+    let blank = adw::ComboRow::builder()
+        .title(&labels.field_blank)
+        .subtitle(&labels.field_blank_hint)
+        .model(&gtk::StringList::new(&[
+            labels.blank_leading.as_str(),
+            labels.blank_trailing.as_str(),
+            labels.blank_none.as_str(),
+        ]))
+        .build();
+    blank.set_selected(blank_index(&current.blank));
+    let settle = spin_row(
+        &labels.field_settle,
+        &labels.field_settle_hint,
+        current.settle,
+        0.0,
+        600.0,
+    );
+    let poll = spin_row(
+        &labels.field_poll,
+        &labels.field_poll_hint,
+        current.poll,
+        1.0,
+        300.0,
+    );
+    let rotate = adw::SwitchRow::builder()
+        .title(&labels.field_rotate)
+        .subtitle(&labels.field_rotate_hint)
+        .active(current.rotate_even == 180)
+        .build();
+    let auto_continue = spin_row(
+        &labels.field_auto_continue,
+        &labels.field_auto_continue_hint,
+        current.auto_continue,
+        0.0,
+        3600.0,
+    );
+    let gui = adw::SwitchRow::builder()
+        .title(&labels.field_gui)
+        .subtitle(&labels.field_gui_hint)
+        .active(current.gui)
+        .build();
+    let tuning = gtk::ListBox::new();
+    tuning.add_css_class("boxed-list");
+    tuning.append(&blank);
+    tuning.append(&settle);
+    tuning.append(&poll);
+    tuning.append(&rotate);
+    tuning.append(&auto_continue);
+    tuning.append(&gui);
+    let tuning_group = adw::PreferencesGroup::builder()
+        .title(&labels.printing_title)
+        .build();
+    tuning_group.add(&tuning);
+
     let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
     let fields = gtk::ListBox::new();
     fields.add_css_class("boxed-list");
@@ -1229,7 +1478,10 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
 
     match index {
         // Editing an existing printer: the fields are the point.
-        Some(_) => body.append(&fields),
+        Some(_) => {
+            body.append(&fields);
+            body.append(&tuning_group);
+        }
         // Adding: offer what CUPS already knows, and keep the manual fields
         // folded away unless there was nothing to detect.
         None => {
@@ -1281,6 +1533,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
             advanced.add_row(&name);
             advanced.add_row(&listen);
             advanced.add_row(&real);
+            body.append(&tuning_group);
             body.append(&advanced);
         }
     }
@@ -1305,6 +1558,12 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
             printer.name = name.text().to_string();
             printer.listen = listen.text().to_string();
             printer.real = real.text().to_string();
+            printer.blank = blank_value(blank.selected()).to_string();
+            printer.settle = settle.value().round() as u64;
+            printer.poll = poll.value().round().max(1.0) as u64;
+            printer.rotate_even = if rotate.is_active() { 180 } else { 0 };
+            printer.auto_continue = auto_continue.value().round() as u64;
+            printer.gui = gui.is_active();
             match index {
                 Some(index) => candidate.printers[index] = printer,
                 None => candidate.printers.push(printer),
