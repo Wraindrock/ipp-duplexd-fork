@@ -5,6 +5,7 @@
 //! The window itself lives in `src/bin/ipp-duplexd-fork-gui.rs`, which is only
 //! built with `--features gui`; everything here is part of the default build.
 
+use crate::ipp;
 use crate::l10n;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -236,6 +237,35 @@ pub struct WindowLabels {
     pub requirements_title: String,
     pub requirements_body: String,
     pub not_answering_title: String,
+    pub field_blank: String,
+    pub field_blank_hint: String,
+    pub blank_leading: String,
+    pub blank_trailing: String,
+    pub blank_none: String,
+    pub field_settle: String,
+    pub field_settle_hint: String,
+    pub field_poll: String,
+    pub field_poll_hint: String,
+    pub field_rotate: String,
+    pub field_rotate_hint: String,
+    pub field_auto_continue: String,
+    pub field_auto_continue_hint: String,
+    pub field_gui: String,
+    pub field_gui_hint: String,
+    pub printing_title: String,
+    pub jobs_title: String,
+    pub jobs_none: String,
+    pub jobs_failed: String,
+    pub job_row: String,
+    pub job_detail: String,
+    pub job_cancel: String,
+    pub job_cancelled: String,
+    pub job_cancel_failed: String,
+    pub state_idle: String,
+    pub state_busy: String,
+    pub state_stopped: String,
+    pub state_unknown: String,
+    pub queue_retry: String,
     pub hplip_hint: String,
     pub hplip_tooltip: String,
     pub hplip_title: String,
@@ -318,6 +348,35 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         requirements_title: text("gui.window.requirements_title"),
         requirements_body: text("gui.window.requirements_body"),
         not_answering_title: text("gui.window.not_answering_title"),
+        field_blank: text("gui.window.field_blank"),
+        field_blank_hint: text("gui.window.field_blank_hint"),
+        blank_leading: text("gui.window.blank_leading"),
+        blank_trailing: text("gui.window.blank_trailing"),
+        blank_none: text("gui.window.blank_none"),
+        field_settle: text("gui.window.field_settle"),
+        field_settle_hint: text("gui.window.field_settle_hint"),
+        field_poll: text("gui.window.field_poll"),
+        field_poll_hint: text("gui.window.field_poll_hint"),
+        field_rotate: text("gui.window.field_rotate"),
+        field_rotate_hint: text("gui.window.field_rotate_hint"),
+        field_auto_continue: text("gui.window.field_auto_continue"),
+        field_auto_continue_hint: text("gui.window.field_auto_continue_hint"),
+        field_gui: text("gui.window.field_gui"),
+        field_gui_hint: text("gui.window.field_gui_hint"),
+        printing_title: text("gui.window.printing_title"),
+        jobs_title: text("gui.window.jobs_title"),
+        jobs_none: text("gui.window.jobs_none"),
+        jobs_failed: text("gui.window.jobs_failed"),
+        job_row: text("gui.window.job_row"),
+        job_detail: text("gui.window.job_detail"),
+        job_cancel: text("gui.window.job_cancel"),
+        job_cancelled: text("gui.window.job_cancelled"),
+        job_cancel_failed: text("gui.window.job_cancel_failed"),
+        state_idle: text("gui.window.state_idle"),
+        state_busy: text("gui.window.state_busy"),
+        state_stopped: text("gui.window.state_stopped"),
+        state_unknown: text("gui.window.state_unknown"),
+        queue_retry: text("gui.window.queue_retry"),
         hplip_hint: text("gui.window.hplip_hint"),
         hplip_tooltip: text("gui.window.hplip_tooltip"),
         hplip_title: text("gui.window.hplip_title"),
@@ -460,6 +519,137 @@ pub fn http_get(addr: &str, path: &str, lang: &str) -> Result<String, String> {
         return Err(format!("HTTP {status}"));
     }
     Ok(body.to_string())
+}
+
+/// One job a virtual printer has queued or is printing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JobInfo {
+    pub id: i32,
+    pub name: String,
+    pub user: String,
+    /// `job-state`: 3 pending, 4 held, 5 processing, 6 stopped, 7 canceled,
+    /// 8 aborted, 9 completed.
+    pub state: i32,
+    /// The daemon's own sentence, already in its language.
+    pub message: String,
+}
+
+fn ipp_target(addr: &str) -> String {
+    format!("ipp://{addr}/ipp/print")
+}
+
+fn operation_group(addr: &str) -> ipp::Group {
+    ipp::Group {
+        tag: ipp::G_OPERATION,
+        attrs: vec![
+            ipp::Attr::str(ipp::T_CHARSET, "attributes-charset", "utf-8"),
+            ipp::Attr::str(ipp::T_LANGUAGE, "attributes-natural-language", "en"),
+            ipp::Attr::str(ipp::T_URI, "printer-uri", &ipp_target(addr)),
+        ],
+    }
+}
+
+/// Ask a virtual printer which jobs it has.
+pub fn jobs_at(addr: &str) -> Result<Vec<JobInfo>, String> {
+    let target = ipp::parse_uri(&ipp_target(addr))?;
+    let mut msg = ipp::Msg::new(ipp::OP_GET_JOBS, 1);
+    let mut op = operation_group(addr);
+    op.attrs.push(ipp::Attr::str(
+        ipp::T_KEYWORD,
+        "which-jobs",
+        "not-completed",
+    ));
+    op.attrs.push(ipp::Attr::strs(
+        ipp::T_KEYWORD,
+        "requested-attributes",
+        &[
+            "job-id",
+            "job-name",
+            "job-originating-user-name",
+            "job-state",
+            "job-state-message",
+        ],
+    ));
+    msg.groups.push(op);
+    let response = ipp::request(&target, &msg)?;
+    if response.op_status != ipp::OK {
+        return Err(format!("the daemon answered 0x{:04x}", response.op_status));
+    }
+    Ok(jobs_in(&response))
+}
+
+/// Read the job groups out of a `Get-Jobs` response.
+pub fn jobs_in(msg: &ipp::Msg) -> Vec<JobInfo> {
+    msg.groups
+        .iter()
+        .filter(|group| group.tag == ipp::G_JOB)
+        .filter_map(|group| {
+            let text = |name: &str| {
+                group
+                    .attrs
+                    .iter()
+                    .find(|attr| attr.name == name)
+                    .and_then(|attr| attr.first_str())
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            let id = group
+                .attrs
+                .iter()
+                .find(|attr| attr.name == "job-id")
+                .and_then(|attr| attr.first_int())?;
+            let state = group
+                .attrs
+                .iter()
+                .find(|attr| attr.name == "job-state")
+                .and_then(|attr| attr.first_int())
+                .unwrap_or(0);
+            Some(JobInfo {
+                id,
+                name: text("job-name"),
+                user: text("job-originating-user-name"),
+                state,
+                message: text("job-state-message"),
+            })
+        })
+        .collect()
+}
+
+/// Cancel one job on a virtual printer.
+pub fn cancel_job_at(addr: &str, id: i32) -> Result<(), String> {
+    let target = ipp::parse_uri(&ipp_target(addr))?;
+    let mut msg = ipp::Msg::new(ipp::OP_CANCEL_JOB, 1);
+    let mut op = operation_group(addr);
+    op.attrs.push(ipp::Attr::int(ipp::T_INTEGER, "job-id", id));
+    op.attrs
+        .push(ipp::Attr::str(ipp::T_NAME, "requesting-user-name", "gui"));
+    msg.groups.push(op);
+    let response = ipp::request(&target, &msg)?;
+    if response.op_status != ipp::OK {
+        return Err(format!("the daemon answered 0x{:04x}", response.op_status));
+    }
+    Ok(())
+}
+
+/// The real printer's state as the daemon reports it: 3 idle, 4 processing,
+/// 5 stopped — `None` when the daemon does not answer at all.
+pub fn printer_state_at(addr: &str) -> Option<i32> {
+    let target = ipp::parse_uri(&ipp_target(addr)).ok()?;
+    let mut msg = ipp::Msg::new(ipp::OP_GET_PRINTER_ATTRS, 1);
+    let mut op = operation_group(addr);
+    op.attrs.push(ipp::Attr::str(
+        ipp::T_KEYWORD,
+        "requested-attributes",
+        "printer-state",
+    ));
+    msg.groups.push(op);
+    let response = ipp::request(&target, &msg).ok()?;
+    response
+        .groups
+        .iter()
+        .flat_map(|group| group.attrs.iter())
+        .find(|attr| attr.name == "printer-state")
+        .and_then(|attr| attr.first_int())
 }
 
 /// The helper next to the running binary, so a `cargo build` tree and an
@@ -687,5 +877,41 @@ mod tests {
         std::fs::write(&helper, b"#!/bin/sh\n").unwrap();
         assert_eq!(find_helper(&exe), Some(helper));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+    #[test]
+    fn jobs_come_out_of_the_response() {
+        use crate::ipp;
+        let mut msg = ipp::Msg::response(ipp::OK, 1);
+        msg.groups.push(ipp::Group {
+            tag: ipp::G_JOB,
+            attrs: vec![
+                ipp::Attr::int(ipp::T_INTEGER, "job-id", 7),
+                ipp::Attr::str(ipp::T_NAME, "job-name", "report.pdf"),
+                ipp::Attr::str(ipp::T_NAME, "job-originating-user-name", "wraindrock"),
+                ipp::Attr::int(ipp::T_ENUM, "job-state", 5),
+                ipp::Attr::str(ipp::T_TEXT, "job-state-message", "printing odd pages"),
+            ],
+        });
+        msg.groups.push(ipp::Group {
+            tag: ipp::G_JOB,
+            attrs: vec![
+                ipp::Attr::int(ipp::T_INTEGER, "job-id", 8),
+                ipp::Attr::str(ipp::T_NAME, "job-name", "other.pdf"),
+            ],
+        });
+        // a group without an id is not a job we can act on
+        msg.groups.push(ipp::Group {
+            tag: ipp::G_JOB,
+            attrs: vec![ipp::Attr::str(ipp::T_NAME, "job-name", "orphan")],
+        });
+        let jobs = jobs_in(&msg);
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].id, 7);
+        assert_eq!(jobs[0].name, "report.pdf");
+        assert_eq!(jobs[0].user, "wraindrock");
+        assert_eq!(jobs[0].state, 5);
+        assert_eq!(jobs[0].message, "printing odd pages");
+        assert_eq!(jobs[1].id, 8);
+        assert_eq!(jobs[1].state, 0);
     }
 }
