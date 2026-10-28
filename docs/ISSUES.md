@@ -41,7 +41,8 @@
 - 重写 body：讲清“本程序只讲 IPP，USB 打印机要靠 ipp-usb 暴露成 `ipp://localhost:60000/ipp/print`；hplip 会抢 USB，两者二选一”。
 - 打包补依赖：rpm `Recommends: ipp-usb`、deb `Recommends: ipp-usb`、PKGBUILD `optdepends=('ipp-usb: ...')`；README 的 Requirements 加一节。
 - 可选的运行时提示：`printer.real` 指向 `localhost` 但 `ipp-usb` 不在跑时，状态页/窗口给一条“没检测到 ipp-usb”的提示，而不是干等超时。
-- 评论里那条“GUI 首次运行起不了服务”不属于本 issue，单开一条（或并入 #3 的首启引导）。
+- 评论里那条“GUI 首次运行起不了服务”不属于本 issue，已单独做完（见文末“已做”）。
+- 2026-10-28：issue #1 的正文已重写成可独立跟进的任务单（背景、证据、任务、验收、验证命令、不在范围）；后续以 GitHub 上的 #1 为准，本文只保留结论与批评。
 
 ---
 
