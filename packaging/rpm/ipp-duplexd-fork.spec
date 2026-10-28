@@ -121,6 +121,13 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 
 %changelog
 
+* Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-2
+- The window can also uninstall the service: it stops and disables the unit,
+  deletes the one it wrote (a packaged unit is left to the package) and removes
+  the environment file while it is still the one install created. Printers,
+  their CUPS queues and the configuration file stay, so install/uninstall can be
+  repeated to try the first run on a machine that already has the service.
+
 * Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-1
 - The window can install the user service itself: it writes the unit when the
   package did not, creates the environment file the unit names, and enables it,
