@@ -14,6 +14,9 @@ pkgdesc="Manual duplex printing via a loopback virtual IPP printer"
 arch=('x86_64' 'aarch64')
 license=('MIT')
 depends=('qpdf' 'gcc-libs' 'gtk4' 'libadwaita')
+# A USB printer only becomes an IPP endpoint through ipp-usb; network printers
+# and CUPS queues do not need it, so it is optional.
+optdepends=('ipp-usb: expose USB printers as IPP printers (ipp://localhost:60000/ipp/print)')
 makedepends=('cargo')
 # The tarball is produced from the working tree by ../build-arch.sh; its name
 # carries no version, so it can never disagree with pkgver

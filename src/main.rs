@@ -14,7 +14,7 @@
 
 use ipp_duplexd_fork::config as cfg_file;
 use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg, PrinterUri};
-use ipp_duplexd_fork::{gui, l10n};
+use ipp_duplexd_fork::{gui, l10n, usb};
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -695,6 +695,17 @@ fn status_page(ctx: &Ctx, lang: &str) -> String {
     out.push('\n');
     out.push_str(&l10n::text(lang, "daemon.page.hint"));
     out.push_str("\n\n");
+    // A USB printer becomes an IPP printer through ipp-usb; without it the
+    // job waits until it times out, which looks like a broken printer. Say
+    // what is missing while someone is still looking at this page.
+    if let Some(uri) = usb::missing([ctx.cfg.printer.uri.as_str()], usb::installed()) {
+        out.push_str(&l10n::tr(
+            lang,
+            "common.ipp_usb_missing",
+            &[("uri", uri.to_string())],
+        ));
+        out.push_str("\n\n");
+    }
     for id in ids {
         let j = &jobs[&id];
         out.push_str(&l10n::tr(

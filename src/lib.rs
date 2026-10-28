@@ -7,5 +7,6 @@ pub mod ipp;
 pub mod l10n;
 pub mod queues;
 pub mod service;
+pub mod usb;
 
 rust_i18n::i18n!("locales", fallback = "en");

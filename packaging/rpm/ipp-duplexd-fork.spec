@@ -49,6 +49,9 @@ Requires:       qpdf
 Requires:       gtk4
 Requires:       libadwaita
 Recommends:     cups-client
+# A USB printer only exists in IPP terms once ipp-usb exposes it; network
+# printers and CUPS queues do not need it, so it stays a recommendation.
+Recommends:     ipp-usb
 BuildRequires:  cargo
 BuildRequires:  rust
 BuildRequires:  tar

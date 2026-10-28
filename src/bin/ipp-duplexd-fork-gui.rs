@@ -30,6 +30,7 @@ use ipp_duplexd_fork::gui::{self, Mode};
 use ipp_duplexd_fork::l10n;
 use ipp_duplexd_fork::queues;
 use ipp_duplexd_fork::service;
+use ipp_duplexd_fork::usb;
 use libadwaita as adw;
 use rust_i18n::t;
 use std::cell::{Cell, RefCell};
@@ -514,14 +515,21 @@ fn diagnostics_text(state: &Rc<State>) -> String {
     out.push_str("\n--- journal ---\n");
     out.push_str(&service::journal_text(80));
     out.push_str("\n--- virtual printers ---\n");
-    let printers: Vec<(String, String)> = state
+    let printers: Vec<(String, String, String)> = state
         .config
         .borrow()
         .printers
         .iter()
-        .map(|printer| (printer.name.clone(), printer.listen.clone()))
+        .map(|printer| {
+            (
+                printer.name.clone(),
+                printer.listen.clone(),
+                printer.real.clone(),
+            )
+        })
         .collect();
-    for (name, listen) in printers {
+    let ipp_usb = usb::installed();
+    for (name, listen, real) in printers {
         let line = match gui::http_get(&listen, "/", locale) {
             Ok(_) => l10n::tr(
                 locale,
@@ -535,6 +543,18 @@ fn diagnostics_text(state: &Rc<State>) -> String {
             ),
         };
         out.push_str(&format!("{name}: {line}\n"));
+        // A USB printer is only an IPP printer through ipp-usb; say so here,
+        // next to the port probe that is already asking why nothing answers.
+        if let Some(uri) = usb::missing([real.as_str()], ipp_usb) {
+            out.push_str(&format!(
+                "  {}\n",
+                l10n::tr(
+                    locale,
+                    "common.ipp_usb_missing",
+                    &[("uri", uri.to_string())]
+                )
+            ));
+        }
     }
     out
 }

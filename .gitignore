@@ -1,5 +1,8 @@
 /target/
 
+# local toolchain used for building on this machine
+/.toolchain/
+
 # package build outputs
 /packaging/*.deb
 /packaging/*.rpm
