@@ -171,3 +171,15 @@ ipptool -tv ipp://127.0.0.1:<port>/ipp/print get-printer-attributes.test | grep 
 4. 顺带：上次安装没应答时，`probe_failed` 会让“这台电脑 / 安装服务”那行继续显示，可以再试一次，而不是看起来装好了。
 
 仍待确认：VM 上是否真的缺 qpdf（诊断对话框里的 journal 会直接写出来）。
+
+## GitHub 上的任务单（2026-10-28 晚）
+
+三条原 issue 的正文都已重写成可独立接手的形式（背景、证据与行号、任务清单、验收标准、验证命令、不在范围），后面新加的两条同规格。**后续以 issue 为准**，本文只保留结论与批评。
+
+| # | 标题 | 需要什么 |
+| --- | --- | --- |
+| [#1](https://github.com/Wraindrock/ipp-duplexd-fork/issues/1) | ipp-usb 是未声明的依赖：打包声明、README、运行时提示 | 无 |
+| [#2](https://github.com/Wraindrock/ipp-duplexd-fork/issues/2) | 纸张尺寸被改动：真机离线时队列 PPD 丢掉 B5 | 真机确认 |
+| [#3](https://github.com/Wraindrock/ipp-duplexd-fork/issues/3) | GUI 与后端能力对齐：六个旋钮、任务列表、队列重试 | 无 |
+| [#4](https://github.com/Wraindrock/ipp-duplexd-fork/issues/4) | GUI 助手在无法显示时返回 1 而不是 2，守护进程因此不回退 zenity | 无（有桌面会话的机器上可直接复现） |
+| [#5](https://github.com/Wraindrock/ipp-duplexd-fork/issues/5) | 把 qpdf 静态编进 AppImage（提案） | 无，需要决定是否做 |
