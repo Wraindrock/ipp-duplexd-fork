@@ -115,6 +115,14 @@ fn run_flip_dialog(
     adw::init().map_err(|e| l10n::tr(locale, "gui.err.no_display", &[("err", e.to_string())]))?;
 
     let result = Rc::new(Cell::new(gui::EXIT_DECLINE));
+    // Did the dialog produce an answer at all? GTK happily initialises against
+    // a session that never draws anything -- a Wayland socket nothing answers
+    // on, a display that takes the connection and then drops it -- and the main
+    // loop then ends without a single response, leaving `result` at its initial
+    // "not yet". That is "nothing was shown", not "the user said no": reporting
+    // 1 there stops the daemon from trying zenity/kdialog next and the job
+    // waits forever with nothing in the log.
+    let answered = Rc::new(Cell::new(false));
     let app = adw::Application::builder()
         .application_id(gui::APP_ID)
         // Two jobs can be waiting at once, and a dialog does not need D-Bus
@@ -125,6 +133,7 @@ fn run_flip_dialog(
     {
         let prompt = prompt.clone();
         let result = result.clone();
+        let answered = answered.clone();
         app.connect_activate(move |app| {
             let dialog = adw::AlertDialog::builder()
                 .heading(gui::NAME)
@@ -149,8 +158,10 @@ fn run_flip_dialog(
 
             {
                 let finish = finish.clone();
+                let answered = answered.clone();
                 let dialog = dialog.clone();
                 dialog.connect_response(None, move |_, response| {
+                    answered.set(true);
                     finish(if response == ACCEPT {
                         gui::EXIT_ACCEPT
                     } else {
@@ -170,6 +181,12 @@ fn run_flip_dialog(
     }
 
     app.run_with_args::<&str>(&[]);
+    // The test hook never presses a button; it calls `finish` directly.
+    if answer.is_none() && !answered.get() {
+        // Exit code 2 (EXIT_NO_DISPLAY): the dialog was never really there, so
+        // the daemon keeps trying and falls back to zenity/kdialog.
+        return Err(l10n::tr(locale, "gui.err.no_window", &[]));
+    }
     Ok(result.get())
 }
 
