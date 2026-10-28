@@ -183,3 +183,20 @@ ipptool -tv ipp://127.0.0.1:<port>/ipp/print get-printer-attributes.test | grep 
 | [#3](https://github.com/Wraindrock/ipp-duplexd-fork/issues/3) | GUI 与后端能力对齐：六个旋钮、任务列表、队列重试 | 无 |
 | [#4](https://github.com/Wraindrock/ipp-duplexd-fork/issues/4) | GUI 助手在无法显示时返回 1 而不是 2，守护进程因此不回退 zenity | 无（有桌面会话的机器上可直接复现） |
 | [#5](https://github.com/Wraindrock/ipp-duplexd-fork/issues/5) | 把 qpdf 静态编进 AppImage（提案） | 无，需要决定是否做 |
+
+## 已做（2026-10-28 深夜）：#1 的 ipp-usb 依赖声明与提示
+
+| 位置 | 变化 |
+| --- | --- |
+| `packaging/rpm/ipp-duplexd-fork.spec` | `Recommends: ipp-usb`，与 `cups-client` 同组 |
+| `packaging/build-deb.sh` | control 里 `Recommends: ipp-usb` |
+| `packaging/arch/PKGBUILD` | `optdepends=('ipp-usb: expose USB printers as IPP printers …')` |
+| `packaging/build-rpm.sh` | 产物检查多一条 `rpm -qp --recommends` 断言——弱依赖不在 `-qpR` 里，只能这样查 |
+| `README.md` | 新小节「USB printers」：本程序只讲 IPP、`ipp://localhost:60000/ipp/print` 是 ipp-usb 给的、hplip 为什么不能同时跑（抢同一个 USB 设备）；Packages 一节点一句 |
+| `src/usb.rs`（新） | 纯函数：`is_endpoint`（loopback 且 60000 才算）、`installed_in`（查 `PATH`，不启动进程）、`missing`（第一条需要 ipp-usb 的 `real`）；单测覆盖 631 队列、远端 `:60000`、装了 ipp-usb 三种“不该报警”的情况 |
+| `src/main.rs` | 状态页 `GET /` 满足条件时多一行，给出三种发行版的安装命令 |
+| `src/bin/ipp-duplexd-fork-gui.rs` | 诊断对话框在对应打印机下面加同一行 |
+| `locales/{en,zh-CN}.yml` | `common.ipp_usb_missing`（中英各一条） |
+
+验证：`cargo fmt --check`、`cargo clippy --all-targets`、`cargo test`（lib 51、e2e 12、i18n 14、`tests/service.rs` 9）全绿；`--features gui` 的编译、测试和打包走 CI（本机没有 gtk4-devel，只有运行时库）。状态页手动跑了五种组合：本机 `60000` + 无 ipp-usb 出提示（中英各一次），`127.0.0.1:631` 队列、远端 `:60000`、装了 ipp-usb 本机 `:60000` 都不出。
+
