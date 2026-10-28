@@ -220,6 +220,35 @@ jobs:
           grep -q -- '-p smoke-duplex' "$dir/calls"
           grep -q 'ipp://127.0.0.1:6699/ipp/print' "$dir/calls"
 
+      # First run from the window: the machine has no unit, so "Set up" has to
+      # write one, create the .conf the unit names, and enable it. systemctl is
+      # a stub, so the files are proven without a systemd session and without
+      # touching the runner's own configuration.
+      - name: The window installs the service on first run
+        run: |
+          set -eux
+          dir=$(mktemp -d)
+          mkdir -p "$dir/home"
+          printf '#!/bin/sh\necho "$@" >> "%s/calls"\nexit 0\n' "$dir" > "$dir/systemctl"
+          chmod +x "$dir/systemctl"
+          cat > "$dir/config.toml" <<'EOF'
+          [[printer]]
+          name = "smoke-duplex"
+          listen = "127.0.0.1:6699"
+          real = "ipp://127.0.0.1:9/print"
+          EOF
+          env HOME="$dir/home" \
+            IPP_DUPLEXD_FORK_CONFIG="$dir/config.toml" \
+            IPP_DUPLEXD_FORK_SYSTEMCTL="$dir/systemctl" \
+            IPP_DUPLEXD_FORK_GUI_TEST=setup \
+            xvfb-run -a ./target/debug/ipp-duplexd-fork-gui --lang en
+          unit="$dir/home/.config/systemd/user/ipp-duplexd-fork.service"
+          test -f "$unit"
+          grep -q 'ExecStart=.*/ipp-duplexd-fork ' "$unit"
+          grep -q 'PartOf=graphical-session.target' "$unit"
+          test -f "$dir/home/.config/ipp-duplexd-fork.conf"
+          grep -q -- '--user enable --now ipp-duplexd-fork' "$dir/calls"
+
       # No display: the daemon must not mistake that for a confirmation.
       - name: Without a display the dialog says so and exits 2
         run: |

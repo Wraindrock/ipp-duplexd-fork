@@ -12,7 +12,10 @@ PartOf=graphical-session.target
 [Service]
 # Put e.g.  IPP_DUPLEXD_FORK_ARGS=--printer ipp://127.0.0.1:631/printers/laser
 # into ~/.config/ipp-duplexd-fork.conf (see ipp-duplexd-fork.conf.example).
-EnvironmentFile=%h/.config/ipp-duplexd-fork.conf
+# The '-' keeps the unit loadable when that file does not exist: the printers
+# can also live in ~/.config/ipp-duplexd-fork/config.toml, which the window
+# writes, and in that case the daemon needs no flags at all.
+EnvironmentFile=-%h/.config/ipp-duplexd-fork.conf
 ExecStart=/usr/bin/ipp-duplexd-fork $IPP_DUPLEXD_FORK_ARGS
 Restart=on-failure
 RestartSec=5

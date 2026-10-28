@@ -7,6 +7,7 @@
 
 use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg};
 use ipp_duplexd_fork::l10n;
+use ipp_duplexd_fork::service;
 use rust_i18n::t;
 use std::io::{self, Write};
 use std::net::TcpStream;
@@ -289,18 +290,10 @@ fn home() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))
 }
 
+/// The daemon to install in the unit: the same lookup the window uses, so the
+/// two front ends cannot disagree about which binary a machine runs.
 fn find_duplexd() -> Option<PathBuf> {
-    // next to this binary first (cargo target dir, or /usr/bin for packages)
-    if let Ok(me) = std::env::current_exe() {
-        let sibling = me.with_file_name("ipp-duplexd-fork");
-        if sibling.is_file() {
-            return Some(sibling);
-        }
-    }
-    let path = std::env::var("PATH").unwrap_or_default();
-    path.split(':')
-        .map(|d| Path::new(d).join("ipp-duplexd-fork"))
-        .find(|p| p.is_file())
+    service::daemon_binary()
 }
 
 fn running_at(port: u16) -> bool {
@@ -442,24 +435,7 @@ fn setup_service(daemon_bin: &Path, gui: bool) -> bool {
         // display variables exist and stops when they go away. Without it,
         // there is nothing session-bound about the daemon, so run it for the
         // whole login (it still serves GET /flip over ssh, with no desktop up).
-        let target = if gui {
-            "After=graphical-session.target\nPartOf=graphical-session.target\n"
-        } else {
-            ""
-        };
-        let wanted_by = if gui {
-            "graphical-session.target"
-        } else {
-            "default.target"
-        };
-        let unit = format!(
-            "[Unit]\nDescription=Manual duplex virtual IPP printer\nAfter=network.target\n\
-             {target}\n\
-             [Service]\nEnvironmentFile=%h/.config/ipp-duplexd-fork.conf\n\
-             ExecStart={} $IPP_DUPLEXD_FORK_ARGS\nRestart=on-failure\nRestartSec=5\n\n\
-             [Install]\nWantedBy={wanted_by}\n",
-            daemon_bin.display()
-        );
+        let unit = service::unit_text(daemon_bin, gui);
         std::fs::create_dir_all(user_unit.parent().unwrap()).ok();
         match std::fs::write(&user_unit, unit) {
             Ok(()) => println!(

@@ -192,6 +192,16 @@ preseed answers. `--lang CODE` runs the wizard in that language and
 remembers it (`--lang CODE` is written into the config file, so the
 service speaks it too). See `ipp-duplexd-fork-setup --help`.
 
+The same first run can be done from the desktop window (`ipp-duplexd-fork-gui`
+with no arguments), which is the point of the "This computer" row: adding the
+first virtual printer installs the systemd user service when the machine has
+none — writing the unit, creating the `~/.config/ipp-duplexd-fork.conf` the unit
+names, and enabling it for every login — then waits until the daemon answers and
+registers the CUPS queue. A machine whose service is installed but stopped gets
+the same treatment (install is idempotent, and ends with a restart). The terminal
+wizard is still there for machines without a desktop; both front ends write the
+same files.
+
 To do the same by hand instead:
 
 ```sh
@@ -243,6 +253,14 @@ Start it with no arguments (from your desktop menu, or in a terminal **without
 `sudo`**) and it opens the manager window. Everything the command line can do
 is there, as one tree:
 
+- **First run** — a machine with no unit (or one that is not running yet) opens
+  with a "This computer" row above the printers: **Set up** writes
+  `~/.config/systemd/user/ipp-duplexd-fork.service` when the package did not,
+  creates the `~/.config/ipp-duplexd-fork.conf` the unit names, has systemd
+  `enable --now` it, waits for the daemon, and registers the queues. Saving the
+  first printer does the same without a separate click, so a fresh machine can
+  be set up from the window alone (the terminal wizard stays for machines with
+  no desktop; both write the same files).
 - **Virtual printers** — one row per printer in the
   [configuration file](#configuration-file), showing its listen address and
   the real printer behind it. Each row has four buttons: print the backs of

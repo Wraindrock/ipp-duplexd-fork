@@ -51,6 +51,7 @@ fn main() -> ExitCode {
     let answer = gui::test_answer(hook.as_deref());
     let window_test = gui::window_test(hook.as_deref());
     let add_test = gui::add_test(hook.as_deref());
+    let setup_test = gui::setup_test(hook.as_deref());
     let args = match gui::parse_args(std::env::args().skip(1), default_lang, answer) {
         Ok(args) => args,
         Err(e) => {
@@ -78,7 +79,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Mode::Window => match run_window(args.lang, window_test, add_test) {
+        Mode::Window => match run_window(args.lang, window_test, add_test, setup_test) {
             Ok(code) => ExitCode::from(code),
             Err(e) => {
                 eprintln!("{}: {e}", gui::NAME);
@@ -172,7 +173,12 @@ fn run_flip_dialog(
 /// re-read it (`POST /reload`); when nobody answers, restart the user service.
 /// The window never talks to the real printer itself and never holds state the
 /// file does not have.
-fn run_window(locale: &'static str, window_test: bool, add_test: bool) -> Result<u8, String> {
+fn run_window(
+    locale: &'static str,
+    window_test: bool,
+    add_test: bool,
+    setup_test: bool,
+) -> Result<u8, String> {
     adw::init().map_err(|e| {
         l10n::tr(
             locale,
@@ -253,12 +259,29 @@ fn run_window(locale: &'static str, window_test: bool, add_test: bool) -> Result
                 editor(&state, None);
             });
         }
-        if window_test || add_test {
+        if setup_test {
+            // The smoke test presses "Set up" itself, so the first-run install
+            // runs for real: a stub systemctl and a temporary HOME make it
+            // write the unit without touching the machine running the test.
+            let state = state.clone();
+            glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                start_setup(&state);
+            });
+        }
+        if window_test || add_test || setup_test {
             // The Xvfb smoke test needs the real window to be built and shown,
             // then to go away without a user.
             let window = window.clone();
             let app = app.clone();
-            let delay = if add_test { 1200 } else { 400 };
+            let delay = if add_test {
+                1200
+            } else if setup_test {
+                // Long enough for the install, and for the wait for a daemon
+                // that the test machine does not run.
+                8000
+            } else {
+                400
+            };
             glib::timeout_add_local_once(Duration::from_millis(delay), move || {
                 window.close();
                 app.quit();
@@ -295,12 +318,110 @@ fn build_page(state: &Rc<State>) -> adw::PreferencesPage {
     let labels = gui::window_labels(locale);
     let page = adw::PreferencesPage::new();
 
+    // First run: there is no unit yet, or one that was never started. The row
+    // is the whole difference between "the window only shows printers" and
+    // "the window can set the machine up", so it comes before the printers.
+    if setup_needed() {
+        page.add(&setup_group(state, &labels));
+    }
     page.add(&printers_group(state, &labels));
     page.add(&service_group(state, &labels));
     page.add(&settings_group(state, &labels));
     page.add(&about_group(&labels));
 
     page
+}
+
+/// Whether the machine still needs the service installed or started.
+fn setup_needed() -> bool {
+    !service::installed() || !service::is_active()
+}
+
+/// The first-run row: one button that installs (or starts) the service, so the
+/// daemon runs without the terminal wizard.
+fn setup_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::new();
+    group.set_title(&labels.setup_title);
+
+    let row = adw::ActionRow::builder()
+        .title(&labels.service_title)
+        .subtitle(&labels.setup_body)
+        .build();
+    row.set_subtitle_lines(4);
+    let button = gtk::Button::with_label(&labels.setup_button);
+    button.add_css_class("suggested-action");
+    button.set_valign(gtk::Align::Center);
+    {
+        let state = state.clone();
+        button.connect_clicked(move |_| start_setup(&state));
+    }
+    row.add_suffix(&button);
+    group.add(&row);
+    group
+}
+
+/// Install (or just start) the user service, wait until the daemon answers,
+/// then register the queues CUPS needs. With no printer configured there is
+/// nothing to start — the daemon refuses to run without one — so this opens the
+/// add dialog first, in the same order the terminal wizard uses.
+fn start_setup(state: &Rc<State>) {
+    let locale = state.locale.get();
+    if state.config.borrow().printers.is_empty() {
+        editor(state, None);
+        return;
+    }
+    match service::install(true) {
+        Ok(_) => toast(state, &l10n::text(locale, "gui.window.setup_done")),
+        Err(e) => {
+            toast(
+                state,
+                &l10n::tr(locale, "gui.window.setup_failed", &[("err", e)]),
+            );
+            return;
+        }
+    }
+    if wait_for_daemon(state, locale) {
+        register_queues(state);
+    } else {
+        let addrs = state
+            .config
+            .borrow()
+            .printers
+            .iter()
+            .map(|p| p.listen.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        toast(
+            state,
+            &l10n::tr(locale, "gui.window.setup_no_answer", &[("addr", addrs)]),
+        );
+    }
+    idle_rebuild(state);
+}
+
+/// The daemon binds its sockets right after `enable --now`, but systemd starts
+/// it asynchronously: give it a few seconds before calling it unreachable.
+fn wait_for_daemon(state: &Rc<State>, locale: &str) -> bool {
+    let addrs: Vec<String> = state
+        .config
+        .borrow()
+        .printers
+        .iter()
+        .map(|p| p.listen.clone())
+        .collect();
+    if addrs.is_empty() {
+        return true;
+    }
+    for _ in 0..20 {
+        if addrs
+            .iter()
+            .any(|addr| gui::http_get(addr, "/", locale).is_ok())
+        {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    false
 }
 
 fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {
@@ -369,7 +490,9 @@ fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Preferen
     let group = adw::PreferencesGroup::new();
     group.set_title(&labels.service_title);
 
-    let detail = if service::available() {
+    let detail = if !service::installed() {
+        labels.service_not_installed.clone()
+    } else if service::available() {
         service::state_text()
     } else {
         labels.service_missing.clone()
@@ -576,12 +699,20 @@ fn commit(state: &Rc<State>) {
         .map(|printer| printer.listen.clone())
         .collect();
     if gui::reload_everywhere(&addrs, locale) == 0 {
-        match service::restart() {
-            Ok(()) => toast(state, &l10n::text(locale, "gui.window.restarted")),
-            Err(e) => toast(
-                state,
-                &l10n::tr(locale, "gui.window.restart_failed", &[("err", e)]),
-            ),
+        // Nothing answers: either the unit is there but stopped, or this is
+        // the very first save and there is no unit at all. The second case is
+        // the one the terminal wizard used to be needed for.
+        if service::installed() {
+            match service::restart() {
+                Ok(()) => toast(state, &l10n::text(locale, "gui.window.restarted")),
+                Err(e) => toast(
+                    state,
+                    &l10n::tr(locale, "gui.window.restart_failed", &[("err", e)]),
+                ),
+            }
+        } else {
+            start_setup(state);
+            return;
         }
     } else {
         toast(state, &l10n::text(locale, "gui.window.saved"));

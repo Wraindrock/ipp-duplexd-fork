@@ -82,6 +82,14 @@ pub fn add_test(raw: Option<&str>) -> bool {
     raw == Some("add")
 }
 
+/// `IPP_DUPLEXD_FORK_GUI_TEST=setup` presses the first-run "Set up" button by
+/// itself, so a headless machine can prove that the window installs the
+/// service (with a stub `systemctl` and a temporary HOME) instead of only
+/// compiling the code that would.
+pub fn setup_test(raw: Option<&str>) -> bool {
+    raw == Some("setup")
+}
+
 /// Parse the helper's command line. `default_lang` is the environment's choice
 /// (passed in rather than read here, so tests are not at the mercy of the
 /// environment they run in).
@@ -199,6 +207,13 @@ pub struct WindowLabels {
     pub detected_failed: String,
     pub advanced: String,
     pub advanced_hint: String,
+    pub setup_title: String,
+    pub setup_body: String,
+    pub setup_button: String,
+    pub setup_done: String,
+    pub setup_failed: String,
+    pub setup_no_answer: String,
+    pub service_not_installed: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -247,6 +262,13 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         detected_failed: text("gui.window.detected_failed"),
         advanced: text("gui.window.advanced"),
         advanced_hint: text("gui.window.advanced_hint"),
+        setup_title: text("gui.window.setup_title"),
+        setup_body: text("gui.window.setup_body"),
+        setup_button: text("gui.window.setup_button"),
+        setup_done: text("gui.window.setup_done"),
+        setup_failed: text("gui.window.setup_failed"),
+        setup_no_answer: text("gui.window.setup_no_answer"),
+        service_not_installed: text("gui.window.service_not_installed"),
     }
 }
 
