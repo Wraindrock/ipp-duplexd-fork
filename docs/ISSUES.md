@@ -240,5 +240,23 @@ lpadmin -p DeskJet-2600 -E -v ipp://localhost:60000/ipp/print -m everywhere
 
 运维附记：本机 CUPS 会对连续失败的队列自动 `disable`，`cupsenable <queue>` 能恢复；卡住的 `hp` 后端要 `systemctl restart cups` 才清掉（重启后排队作业会消失）。
 
+## 已做（2026-10-29 凌晨）：#8 hplip 队列检测与一键切换、#3 GUI 对齐
 
+### #8 —— 把昨晚的坑变成一条可点的按钮
 
+- `discover`：`CUPS-Get-Printers` 多要一个 `device-uri`（CUPS 的扩展属性，本机实测会返回），`Discovered` 多一个字段
+- `src/hplip.rs`（新）：`queue_of_real`（只认本机 `/printers/NAME`）、`is_hplip_usb`（只认 `hp:/usb/`，`hp:/net/` 与已经是 IPP 的队列都不算）、`conflict_for`；纯判定，7 条单测
+- `queues.rs`：`switch_to_ipp_usb`（先把旧 device-uri 和 PPD 写进数据目录，再改队列；`lpadmin` 失败就把备份删掉，不留假条目）、`restore`、`backups`、`ppd_text`（从 CUPS 取 PPD）；打桩 `lpadmin`/`lpstat` 的测试覆盖切换、拒绝、还原
+- 窗口：行内黄色警告 + 确认对话框 + 一键切换；"已从 hplip 切走的队列"组里可以切回；诊断文本里也有同一行
+- README：「USB printers」改成"hplip 不用卸，但这条队列不能走它"
+
+### #3 —— 界面追上后端
+
+- 编辑对话框新增"打印行为"组：`blank` 下拉、`settle`/`poll`/`auto_continue` 秒数、`rotate_even`/`gui` 开关；新增时取默认值，编辑时取现有值，保存仍受 `config::validate` 约束（settle ≤ 600、poll ≥ 1、rotate ∈ {0,180}、blank 三选一）
+- 新的 Jobs 页（`AdwViewSwitcher` + Printers / Jobs）：每台虚拟打印机读 `Get-Jobs`，每行 `#id 作业名` + 用户 + 守护进程自己那句状态，右侧 `Cancel-Job`；组头有刷新
+- 每行末尾是真机状态：`· 空闲 / 打印中 / 离线 / 没有应答`（来自守护进程的 `printer-state`，它代理的是真机）
+- 诊断组新增"重新注册队列"，不用重启窗口
+
+验证：本地 `cargo fmt --check`、`clippy --all-targets` 与 `--features gui`、`cargo test --features gui` 全绿（lib 59、e2e 12、gui 3、i18n 14、service 9）；PR #9、#10 的 CI 各自六个 job 全绿。功能实测：另起一台守护进程（`real` 指向不可达端口），`jobs_at` 先返回 0 条，提交作业后返回 1 条（`#1 "untitled" state=5 "printing odd pages"`），`printer_state_at` 返回 5（停止）——与离线时守护进程报的状态一致。
+
+没做的：打印预览、多用户/远程管理（#3 的"不在范围"）。
