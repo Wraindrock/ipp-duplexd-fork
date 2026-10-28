@@ -121,6 +121,17 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 
 %changelog
 
+* Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-3
+- The window says why the service does not work: a diagnostics dialog with the
+  unit's ExecStart, systemctl status, the service journal and a probe of every
+  configured port, selectable and copyable, opened by itself when an install
+  leaves nothing answering.
+- An AppImage installs a stable copy of itself and points the unit at it,
+  instead of at the temporary mount, which disappeared with the window; the copy
+  goes away with the service.
+- The window refuses to install the service when qpdf is missing, and keeps the
+  setup row visible after a failed probe so the install can be retried.
+
 * Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-2
 - The window can also uninstall the service: it stops and disables the unit,
   deletes the one it wrote (a packaged unit is left to the package) and removes
