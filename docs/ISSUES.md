@@ -212,4 +212,32 @@ ipptool -tv ipp://127.0.0.1:<port>/ipp/print get-printer-attributes.test | grep 
 
 顺带：为了在这台没有 gtk4-devel 的机器上本地跑 `--features gui`，把 Fedora 的 `gtk4-devel`/`libadwaita-devel` 依赖链下下来解到 `/tmp/sysroot`，用 `PKG_CONFIG_SYSROOT_DIR` + 补 `lib*.so` 软链来编译链接；这只是临时环境，仓库里没有因此改动构建方式。
 
+## 已做（2026-10-29 凌晨）：打印不出来 + B5 白边，根因是 hplip 队列
+
+现场：`DeskJet-2600` 的设备是 `hp:/usb/DeskJet_2600_series?serial=…`（hplip 后端），而 `ipp-usb` 正占着同一台 USB 设备。`hp` 后端拿不到设备，每 30 秒重试一次，作业永远出不来、也没有任何提示：
+
+```console
+hp: invalid claim_interface 7/1/2: Device or resource busy
+hp: open device failed stat=12: …; will retry in 30 seconds...
+```
+
+能走到 hplip 渲染路径时，B5 还会变成“A4 画布 + B5 内容居中”，印在 B5 纸上就是一圈白边、随打印机对位偏移。注意 hplip 后端拿到的选项其实是 `PageSize=B5176x250`——CUPS 的 `media` → PPD 翻译是对的，问题在它之后的渲染/设备争用。
+
+处置（本机，未卸载也未停用 hplip）：
+
+```console
+lpadmin -p DeskJet-2600 -E -v ipp://localhost:60000/ipp/print -m everywhere
+```
+
+旧设备 URI 与旧 PPD 存在 `~/.local/share/ipp-duplexd-fork/`，还原是一条 `lpadmin -p … -v 'hp:/usb/…' -P …ppd`。改完同一份 B5 作业 15~20 秒打完，四边 12pt 边框等宽、内容不偏移。
+
+结论：
+
+- ipp-usb 与 hplip 的冲突只在“这条队列去开同一台设备”时发生；换成 driverless 就没了，不必卸 hplip。别的软件打印走的还是同一条队列，不受影响。
+- #2 原来的假设（真机离线时 PPD 丢 B5）没有复现。`fallback_printer_attrs` 只报 A4/Letter 是实测过的（另起守护进程指向不可达端口），但“窗口重建队列 → B5 消失”这条链没有证据；真机断电时若再见到 B5 丢失，用它重开。
+- 产品化：检测 `hp:/usb/…` 队列 + 一键切换/还原，已开成 #8。
+
+运维附记：本机 CUPS 会对连续失败的队列自动 `disable`，`cupsenable <queue>` 能恢复；卡住的 `hp` 后端要 `systemctl restart cups` 才清掉（重启后排队作业会消失）。
+
+
 
