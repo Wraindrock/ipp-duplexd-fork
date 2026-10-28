@@ -285,11 +285,18 @@ where it is in the `extra` repository). The packages list it as a
 *recommendation*, not a hard dependency: network printers and printers already
 behind CUPS never need it.
 
-**Do not run hplip at the same time.** HP's `hplip` (and the tools built on it)
-grabs the same USB device through its own backend; the two fight over it and
-printing fails. Pick one, and for this program that one is `ipp-usb` — it works
-for HP printers too. If a USB printer was working through hplip, remove hplip
-and let `ipp-usb` take the device; the two cannot share it.
+**A queue that goes through hplip will not print.** HP's `hplip` opens the same
+USB device through its own backend; while `ipp-usb` holds it, hplip cannot, and
+the queue sits there retrying without ever saying why. You do **not** have to
+uninstall hplip — other software may need it — but the CUPS queue for this
+printer must stop pointing at `hp:/usb/…`. One command fixes it:
+
+```sh
+lpadmin -p QUEUE -E -v ipp://localhost:60000/ipp/print -m everywhere
+```
+
+The manager window offers exactly that when it notices such a queue, keeps the
+old device URI and PPD, and can switch it back.
 
 If `real` points at a loopback `60000` endpoint and `ipp-usb` is not installed,
 `GET /` on the virtual printer says so, instead of leaving jobs to fail with a

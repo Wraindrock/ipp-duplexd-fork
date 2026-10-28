@@ -27,6 +27,7 @@ use gtk4 as gtk;
 use ipp_duplexd_fork::config as cfg_file;
 use ipp_duplexd_fork::discover;
 use ipp_duplexd_fork::gui::{self, Mode};
+use ipp_duplexd_fork::hplip;
 use ipp_duplexd_fork::l10n;
 use ipp_duplexd_fork::queues;
 use ipp_duplexd_fork::service;
@@ -364,6 +365,9 @@ fn build_page(state: &Rc<State>) -> adw::PreferencesPage {
         page.add(&setup_group(state, &labels));
     }
     page.add(&printers_group(state, &labels));
+    if let Some(group) = hplip_backups_group(state, &labels) {
+        page.add(&group);
+    }
     page.add(&service_group(state, &labels));
     page.add(&diagnostics_group(state, &labels));
     page.add(&settings_group(state, &labels));
@@ -546,6 +550,7 @@ fn diagnostics_text(state: &Rc<State>) -> String {
         })
         .collect();
     let ipp_usb = usb::installed();
+    let known_queues = discover::cups_printers().unwrap_or_default();
     for (name, listen, real) in printers {
         let line = match gui::http_get(&listen, "/", locale) {
             Ok(_) => l10n::tr(
@@ -560,6 +565,18 @@ fn diagnostics_text(state: &Rc<State>) -> String {
             ),
         };
         out.push_str(&format!("{name}: {line}\n"));
+        // A queue hplip drives cannot print while ipp-usb holds the device;
+        // the port above answers, so this is the only line that explains it.
+        if let Some(conflict) = hplip::conflict_for(&real, &known_queues, ipp_usb) {
+            out.push_str(&format!(
+                "  {}\n",
+                l10n::tr(
+                    locale,
+                    "gui.window.hplip_hint",
+                    &[("queue", conflict.queue)]
+                )
+            ));
+        }
         // A USB printer is only an IPP printer through ipp-usb; say so here,
         // next to the port probe that is already asking why nothing answers.
         if let Some(uri) = usb::missing([real.as_str()], ipp_usb) {
@@ -653,6 +670,12 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
     let group = adw::PreferencesGroup::new();
     group.set_title(&labels.printers_title);
 
+    // Which local queues drive their printer through hplip, while ipp-usb holds
+    // the same USB device. Those queues can never print; the row offers to move
+    // them to ipp-usb instead (hplip stays installed).
+    let known_queues = discover::cups_printers().unwrap_or_default();
+    let ipp_usb = usb::installed();
+
     let printers: Vec<(String, String, String)> = state
         .config
         .borrow()
@@ -671,10 +694,33 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
     }
 
     for (index, (name, listen, real)) in printers.iter().enumerate() {
+        let conflict = hplip::conflict_for(real, &known_queues, ipp_usb);
+        let mut subtitle = gui::row_detail(locale, listen, real);
+        if let Some(conflict) = &conflict {
+            subtitle.push('\n');
+            subtitle.push_str(&l10n::tr(
+                locale,
+                "gui.window.hplip_hint",
+                &[("queue", conflict.queue.clone())],
+            ));
+        }
         let row = adw::ActionRow::builder()
             .title(name)
-            .subtitle(gui::row_detail(locale, listen, real))
+            .subtitle(&subtitle)
             .build();
+        if conflict.is_some() {
+            row.set_subtitle_lines(3);
+        }
+
+        if let Some(conflict) = conflict.clone() {
+            let fix = icon_button("dialog-warning-symbolic", &labels.hplip_tooltip);
+            fix.add_css_class("warning");
+            {
+                let state = state.clone();
+                fix.connect_clicked(move |_| confirm_hplip_switch(&state, &conflict));
+            }
+            row.add_suffix(&fix);
+        }
 
         let flip_button = icon_button("media-playback-start-symbolic", &labels.flip_tooltip);
         let status = icon_button("zoom-in-symbolic", &labels.status_title);
@@ -708,6 +754,130 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
     }
 
     group
+}
+
+/// Offer to point a hplip queue at ipp-usb. Nothing is uninstalled: the old
+/// device URI and PPD are saved under the program's data directory first.
+fn confirm_hplip_switch(state: &Rc<State>, conflict: &hplip::Conflict) {
+    let locale = state.locale.get();
+    let labels = gui::window_labels(locale);
+    let dialog = adw::AlertDialog::builder()
+        .heading(l10n::tr(
+            locale,
+            "gui.window.hplip_title",
+            &[("queue", conflict.queue.clone())],
+        ))
+        .body(l10n::tr(
+            locale,
+            "gui.window.hplip_body",
+            &[("queue", conflict.queue.clone())],
+        ))
+        .build();
+    dialog.add_response("cancel", &labels.cancel);
+    dialog.add_response("switch", &labels.hplip_switch);
+    dialog.set_response_appearance("switch", adw::ResponseAppearance::Suggested);
+    {
+        let state = state.clone();
+        let conflict = conflict.clone();
+        dialog.connect_response(None, move |_, response| {
+            if response == "switch" {
+                switch_queue_to_ipp_usb(&state, &conflict);
+            }
+        });
+    }
+    dialog.present(Some(&state.window));
+}
+
+fn switch_queue_to_ipp_usb(state: &Rc<State>, conflict: &hplip::Conflict) {
+    let locale = state.locale.get();
+    let dir = service::data_dir();
+    let result = queues::ppd_text(&conflict.queue).and_then(|ppd| {
+        queues::switch_to_ipp_usb(&conflict.queue, &conflict.device_uri, &ppd, &dir)
+    });
+    match result {
+        Ok(()) => {
+            toast(
+                state,
+                &l10n::tr(
+                    locale,
+                    "gui.window.hplip_done",
+                    &[("queue", conflict.queue.clone())],
+                ),
+            );
+            rebuild(state);
+        }
+        Err(e) => toast(
+            state,
+            &l10n::tr(
+                locale,
+                "gui.window.hplip_failed",
+                &[("queue", conflict.queue.clone()), ("err", e)],
+            ),
+        ),
+    }
+}
+
+/// The queues that were moved off hplip and can be put back.
+fn hplip_backups_group(
+    state: &Rc<State>,
+    labels: &gui::WindowLabels,
+) -> Option<adw::PreferencesGroup> {
+    let dir = service::data_dir();
+    let saved = queues::backups(&dir);
+    if saved.is_empty() {
+        return None;
+    }
+    let locale = state.locale.get();
+    let group = adw::PreferencesGroup::new();
+    group.set_title(&labels.hplip_backup_title);
+    for queue in saved {
+        let device =
+            std::fs::read_to_string(queues::backup_device(&dir, &queue)).unwrap_or_default();
+        let row = adw::ActionRow::builder()
+            .title(&queue)
+            .subtitle(l10n::tr(
+                locale,
+                "gui.window.hplip_backup_subtitle",
+                &[("device", device.trim().to_string())],
+            ))
+            .build();
+        row.set_subtitle_lines(2);
+        let restore = gtk::Button::with_label(&labels.hplip_restore);
+        restore.add_css_class("flat");
+        {
+            let state = state.clone();
+            let queue = queue.clone();
+            restore.connect_clicked(move |_| restore_hplip_queue(&state, &queue));
+        }
+        row.add_suffix(&restore);
+        group.add(&row);
+    }
+    Some(group)
+}
+
+fn restore_hplip_queue(state: &Rc<State>, queue: &str) {
+    let locale = state.locale.get();
+    match queues::restore(queue, &service::data_dir()) {
+        Ok(device) => {
+            toast(
+                state,
+                &l10n::tr(
+                    locale,
+                    "gui.window.hplip_restored",
+                    &[("queue", queue.to_string()), ("device", device)],
+                ),
+            );
+            rebuild(state);
+        }
+        Err(e) => toast(
+            state,
+            &l10n::tr(
+                locale,
+                "gui.window.hplip_restore_failed",
+                &[("queue", queue.to_string()), ("err", e)],
+            ),
+        ),
+    }
 }
 
 fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {

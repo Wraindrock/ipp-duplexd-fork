@@ -236,6 +236,18 @@ pub struct WindowLabels {
     pub requirements_title: String,
     pub requirements_body: String,
     pub not_answering_title: String,
+    pub hplip_hint: String,
+    pub hplip_tooltip: String,
+    pub hplip_title: String,
+    pub hplip_body: String,
+    pub hplip_switch: String,
+    pub hplip_done: String,
+    pub hplip_failed: String,
+    pub hplip_backup_title: String,
+    pub hplip_backup_subtitle: String,
+    pub hplip_restore: String,
+    pub hplip_restored: String,
+    pub hplip_restore_failed: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -306,6 +318,18 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         requirements_title: text("gui.window.requirements_title"),
         requirements_body: text("gui.window.requirements_body"),
         not_answering_title: text("gui.window.not_answering_title"),
+        hplip_hint: text("gui.window.hplip_hint"),
+        hplip_tooltip: text("gui.window.hplip_tooltip"),
+        hplip_title: text("gui.window.hplip_title"),
+        hplip_body: text("gui.window.hplip_body"),
+        hplip_switch: text("gui.window.hplip_switch"),
+        hplip_done: text("gui.window.hplip_done"),
+        hplip_failed: text("gui.window.hplip_failed"),
+        hplip_backup_title: text("gui.window.hplip_backup_title"),
+        hplip_backup_subtitle: text("gui.window.hplip_backup_subtitle"),
+        hplip_restore: text("gui.window.hplip_restore"),
+        hplip_restored: text("gui.window.hplip_restored"),
+        hplip_restore_failed: text("gui.window.hplip_restore_failed"),
     }
 }
 
@@ -461,6 +485,7 @@ mod tests {
             model: "HP DeskJet 2600".to_string(),
             uri: "ipp://127.0.0.1:631/printers/Office Laser".to_string(),
             state: Some(3),
+            device_uri: None,
         };
         let printer = printer_from_detected(
             &detected,

@@ -235,6 +235,18 @@ gui.window.detected_failed: "The local CUPS did not answer (%{err}); you can sti
 gui.window.advanced: "Advanced"
 gui.window.advanced_hint: "Name, listen address and the printer URI"
 gui.window.unreachable: "not reachable at %{addr} (%{err})"
+gui.window.hplip_hint: "%{queue} is driven by hplip (hp:/usb/…), and ipp-usb holds that device: jobs never print"
+gui.window.hplip_tooltip: "switch this queue away from hplip"
+gui.window.hplip_title: "Switch %{queue} to ipp-usb?"
+gui.window.hplip_body: "%{queue} prints through hplip's USB backend, which cannot open the printer while ipp-usb holds it — the two fight over the same device. Switching points this queue at ipp-usb instead. hplip stays installed, and the old device URI and PPD are saved, so this can be undone."
+gui.window.hplip_switch: "Switch"
+gui.window.hplip_done: "%{queue} now prints through ipp-usb"
+gui.window.hplip_failed: "could not switch %{queue}: %{err}"
+gui.window.hplip_backup_title: "Queues switched away from hplip"
+gui.window.hplip_backup_subtitle: "%{device} — switched on purpose, switch it back here"
+gui.window.hplip_restore: "Switch back"
+gui.window.hplip_restored: "%{queue} is back on %{device}"
+gui.window.hplip_restore_failed: "could not restore %{queue}: %{err}"
 
 # ---------------------------------------------------------- setup wizard
 setup.usage: |

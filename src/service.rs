@@ -223,12 +223,15 @@ pub struct Exec {
     pub arguments: Vec<String>,
 }
 
+/// Where the program keeps the files it writes for the user: the AppImage's
+/// installed copy, and the device URI/PPD saved before a queue is switched.
+pub fn data_dir() -> PathBuf {
+    home().join(".local/share").join(UNIT)
+}
+
 /// Where an AppImage puts itself when it is installed as a service.
 pub fn installed_image() -> PathBuf {
-    home()
-        .join(".local/share")
-        .join(UNIT)
-        .join(format!("{UNIT}.AppImage"))
+    data_dir().join(format!("{UNIT}.AppImage"))
 }
 
 /// The AppImage this process runs from, if any: the runtime exports its path in

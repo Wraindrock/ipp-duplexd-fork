@@ -24,6 +24,9 @@ pub struct Discovered {
     pub uri: String,
     /// `printer-state`: 3 idle, 4 processing, 5 stopped.
     pub state: Option<i32>,
+    /// CUPS's `device-uri`: what the queue itself talks to. `hp:/usb/…` means
+    /// the hplip backend owns the USB device; `ipp://…` is driverless.
+    pub device_uri: Option<String>,
 }
 
 /// Ask the local CUPS daemon which printers it has.
@@ -48,6 +51,7 @@ pub fn cups_printers_at(addr: &str) -> Result<Vec<Discovered>, String> {
                     "printer-info",
                     "printer-make-and-model",
                     "printer-state",
+                    "device-uri",
                 ],
             ),
         ],
@@ -74,11 +78,13 @@ pub fn printers_in(msg: &ipp::Msg) -> Vec<Discovered> {
                 .iter()
                 .find(|attr| attr.name == "printer-state")
                 .and_then(|attr| attr.first_int());
+            let device_uri = text_of(group, "device-uri");
             Some(Discovered {
                 uri: suggested_uri(&queue),
                 queue,
                 model,
                 state,
+                device_uri,
             })
         })
         .collect()
