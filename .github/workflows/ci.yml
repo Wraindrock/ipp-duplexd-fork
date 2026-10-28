@@ -368,5 +368,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: packaging/*.AppImage
+          path: |
+            packaging/*.AppImage
+            packaging/*.AppImage.zsync
           if-no-files-found: error

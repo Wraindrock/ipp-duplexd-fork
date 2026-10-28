@@ -9,3 +9,6 @@
 /packaging/arch/pkg/
 /packaging/*.AppImage
 __pycache__/
+
+# AppImage update information
+/packaging/*.AppImage.zsync

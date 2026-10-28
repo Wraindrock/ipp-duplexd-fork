@@ -87,10 +87,28 @@ install -m 0644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 # (containers, minimal installs), which is also where this script tends to run.
 export APPIMAGE_EXTRACT_AND_RUN=1
 
+# Update information, embedded as .updinfo so Gear Lever, appimageupdatetool and
+# the other AppImage managers can check the releases page and fetch a newer
+# image in place. The transport and the asset pattern are the part that has to
+# match how releases are published: the release job attaches both the AppImage
+# and the .zsync this step writes next to it.
+update_info=${APPIMAGE_UPDATE_INFORMATION:-gh-releases-zsync|Wraindrock|ipp-duplexd-fork|latest|ipp-duplexd-fork-*-x86_64.AppImage.zsync}
+
 out=packaging/ipp-duplexd-fork-$version-$arch.AppImage
-rm -f "$out"
-ARCH="$arch" "$tools/appimagetool" "$appdir" "$out"
+# appimagetool writes the .zsync into the working directory, named after the
+# image, not next to the path it was given.
+base=$(basename "$out")
+rm -f "$out" "$out.zsync" "$base.zsync"
+ARCH="$arch" "$tools/appimagetool" -u "$update_info" "$appdir" "$out"
 chmod +x "$out"
+if [ ! -f "$out.zsync" ] && [ -f "$base.zsync" ]; then
+    mv "$base.zsync" "$out.zsync"
+fi
+if [ ! -f "$out.zsync" ]; then
+    echo "appimagetool wrote no .zsync next to $out; an AppImage without one" >&2
+    echo "cannot be updated in place, so the update information is useless." >&2
+    exit 1
+fi
 
 problems=()
 
@@ -116,6 +134,19 @@ if [ ! -f "$root/io.github.wraindrock.ipp_duplexd_fork.desktop" ]; then
 fi
 if [ ! -f "$root/io.github.wraindrock.ipp_duplexd_fork.svg" ]; then
     problems+=("no application icon at the image root")
+fi
+
+# Gear Lever and appimageupdatetool read the update information out of the
+# image's .upd_info ELF section; without it, "check for updates" has nothing to
+# go on. readelf is the honest way to ask; a plain string search is the fallback
+# for a build host without binutils.
+if command -v readelf >/dev/null 2>&1; then
+    embedded=$(readelf -p .upd_info "$out" 2>/dev/null | grep -oF "$update_info" || true)
+else
+    embedded=$(grep -aoF "$update_info" "$out" | head -n1 || true)
+fi
+if [ "$embedded" != "$update_info" ]; then
+    problems+=("no update information in the image: AppImage managers cannot check for updates")
 fi
 
 # The behaviour: a portable image must still speak its languages, and the

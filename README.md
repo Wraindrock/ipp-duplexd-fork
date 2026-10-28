@@ -109,6 +109,14 @@ to unpack it to a temporary directory first. Built images are attached to every
 [release](https://github.com/Wraindrock/ipp-duplexd-fork/releases), so you can
 also download one instead of building it.
 
+The image carries its update information (`gh-releases-zsync|Wraindrock|
+ipp-duplexd-fork|latest|…`) in its `.upd_info` section, and every release
+attaches the matching `.zsync` beside the AppImage, so an AppImage manager that
+reads it — Gear Lever's **Check for updates**, `appimageupdatetool` — can
+replace the file in place instead of downloading a new one by hand. Building
+for a different repository only needs
+`APPIMAGE_UPDATE_INFORMATION='gh-releases-zsync|owner|repo|latest|…'`.
+
 ### Atomic/immutable systems (Bluefin, Bazzite, Silverblue)
 
 `qpdf` is the one runtime dependency with no user-space alternative in the
