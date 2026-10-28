@@ -435,13 +435,24 @@ fn start_setup(state: &Rc<State>) {
 /// The programs the daemon needs before it can do anything at all, with the one
 /// line that installs each. Only `qpdf` is fatal at startup; without it the
 /// service restarts forever and never listens.
-fn missing_requirements() -> Vec<(&'static str, &'static str)> {
+fn missing_requirements() -> Vec<(&'static str, String)> {
     let mut missing = Vec::new();
-    if Command::new("qpdf").arg("--version").output().is_err() {
-        missing.push((
-            "qpdf",
-            "dnf install qpdf   ·   apt install qpdf   ·   pacman -S qpdf",
-        ));
+    // Ask the way the unit will: a distro package puts qpdf in /usr/bin, while
+    // on an atomic machine it usually comes from Homebrew, which a desktop
+    // session's PATH does not necessarily contain.
+    let found = service::find_program("qpdf")
+        .map(|path| Command::new(path).arg("--version").output().is_ok())
+        .unwrap_or(false);
+    if !found {
+        // rpm-ostree layers a package but needs a reboot, so Homebrew is the
+        // first suggestion on Silverblue derivatives (Bluefin, Bazzite...).
+        let hint = if service::atomic_host() {
+            "brew install qpdf   ·   rpm-ostree install qpdf (needs a reboot)   ·   \
+             or put a qpdf binary in ~/.local/bin"
+        } else {
+            "dnf install qpdf   ·   apt install qpdf   ·   pacman -S qpdf"
+        };
+        missing.push(("qpdf", hint.to_string()));
     }
     missing
 }

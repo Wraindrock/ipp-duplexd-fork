@@ -109,6 +109,25 @@ to unpack it to a temporary directory first. Built images are attached to every
 [release](https://github.com/Wraindrock/ipp-duplexd-fork/releases), so you can
 also download one instead of building it.
 
+### Atomic/immutable systems (Bluefin, Bazzite, Silverblue)
+
+`qpdf` is the one runtime dependency with no user-space alternative in the
+package, and on an OSTree machine there is no `dnf install`; layering it with
+`rpm-ostree` works but costs a reboot and an image change. The shorter way is
+Homebrew, which Bluefin and Bazzite already ship:
+
+```sh
+brew install qpdf          # no root, no reboot, survives OS updates
+```
+
+The service is a *user* unit, so the unit sets its own `PATH`
+(`~/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin`);
+the daemon finds a Homebrew `qpdf` even though the desktop session never
+sourced `brew shellenv`. If you prefer a plain binary, dropping one in
+`~/.local/bin` works just as well, and `rpm-ostree install qpdf` remains a third
+option. The window checks for `qpdf` in all three places before it installs
+anything, and says which command to run when it is missing.
+
 It is a test build, not a replacement for the packages: it is unsigned, it
 does not install anything or register with the desktop, and the wizard still
 needs the host's `cups-client` because it has to talk to the real CUPS. The

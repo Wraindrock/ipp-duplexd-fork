@@ -283,3 +283,28 @@ fn an_appimage_installs_a_stable_copy_and_points_the_unit_at_it() {
     service::uninstall().expect("uninstall");
     assert!(!copy.is_file(), "uninstall takes the copied image with it");
 }
+
+#[test]
+fn a_homebrew_or_local_qpdf_counts_as_installed() {
+    let _guard = guard();
+    let machine = Machine::new("program", None);
+    let bin = machine.home.join(".local/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let local = stub(&bin.join("qpdf"), "exit 0");
+    // A desktop session that never sourced `brew shellenv` has a PATH without
+    // the user-space directories, which is the whole point of the lookup. Point
+    // PATH at an empty directory so a qpdf installed system-wide (the CI
+    // runner has one) cannot stand in for the answer.
+    let original = std::env::var_os("PATH");
+    std::env::set_var("PATH", machine.dir.join("nowhere"));
+
+    assert_eq!(service::find_program("qpdf"), Some(local));
+    let unit = std::fs::read_to_string(service::user_unit_path()).unwrap_or_default();
+    assert!(unit.is_empty(), "nothing should have been installed");
+    assert!(service::unit_path().contains(".local/bin"));
+    assert!(service::unit_path().contains("/home/linuxbrew/.linuxbrew/bin"));
+    match original {
+        Some(path) => std::env::set_var("PATH", path),
+        None => std::env::remove_var("PATH"),
+    }
+}

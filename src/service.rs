@@ -166,6 +166,55 @@ pub fn daemon_binary() -> Option<PathBuf> {
     })
 }
 
+/// Whether this is an OSTree/bootc style machine, where packages are layered
+/// with `rpm-ostree` and a reboot instead of being installed, and where
+/// Homebrew is the usual way to get a user-space tool.
+pub fn atomic_host() -> bool {
+    Path::new("/run/ostree-booted").exists()
+}
+
+/// The directories a user-space program can live in on a machine where nothing
+/// may be installed system-wide: Homebrew (which Bluefin, Bazzite and the other
+/// Silverblue derivatives ship), `~/.local/bin`, and the usual system ones.
+pub fn program_dirs() -> Vec<PathBuf> {
+    vec![
+        home().join(".local/bin"),
+        PathBuf::from("/home/linuxbrew/.linuxbrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+    ]
+}
+
+/// The PATH the unit hands the daemon. A user service does not get the shell's
+/// PATH, so without this a `qpdf` installed with Homebrew is invisible to it —
+/// and the daemon refuses to run without `qpdf`.
+pub fn unit_path() -> String {
+    program_dirs()
+        .iter()
+        .map(|dir| dir.display().to_string())
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+/// Look for a program the way the unit will find it: the session's PATH first,
+/// then the user-space directories, so a Homebrew `qpdf` counts even when the
+/// window was started from a session that never sourced `brew shellenv`.
+pub fn find_program(name: &str) -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("PATH") {
+        if let Some(found) = std::env::split_paths(&path)
+            .map(|dir| dir.join(name))
+            .find(|candidate| candidate.is_file())
+        {
+            return Some(found);
+        }
+    }
+    program_dirs()
+        .into_iter()
+        .map(|dir| dir.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
 /// What a unit has to start: the daemon binary, or a copy of the AppImage plus
 /// the `daemon` subcommand it dispatches on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,12 +314,14 @@ pub fn unit_text_with(exec: &Exec, gui: bool) -> String {
          After=network.target\n\
          {session}\n\
          [Service]\n\
+         Environment=PATH={}\n\
          EnvironmentFile=-%h/.config/ipp-duplexd-fork.conf\n\
          ExecStart={}{arguments} $IPP_DUPLEXD_FORK_ARGS\n\
          Restart=on-failure\n\
          RestartSec=5\n\n\
          [Install]\n\
          WantedBy={wanted_by}\n",
+        unit_path(),
         exec.path.display()
     )
 }
@@ -428,6 +479,15 @@ mod tests {
         assert!(unit.contains("PartOf=graphical-session.target"), "{unit}");
         assert!(unit.contains("WantedBy=graphical-session.target"), "{unit}");
         assert!(unit.contains("Restart=on-failure"), "{unit}");
+    }
+
+    #[test]
+    fn the_unit_gives_the_daemon_a_user_space_path() {
+        let unit = unit_text(Path::new("/usr/bin/ipp-duplexd-fork"), true);
+        assert!(unit.contains("Environment=PATH="), "{unit}");
+        // Homebrew, because an atomic machine cannot install qpdf system-wide.
+        assert!(unit.contains("/home/linuxbrew/.linuxbrew/bin"), "{unit}");
+        assert!(unit.contains(".local/bin"), "{unit}");
     }
 
     #[test]
