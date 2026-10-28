@@ -121,6 +121,13 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 
 %changelog
 
+* Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-4
+- The unit gives the daemon a PATH that includes ~/.local/bin and Homebrew's
+  prefix, so a qpdf installed without root (the only option on an atomic
+  system) is found by the service, which a user unit's environment never had.
+- The window looks for qpdf the way the unit will and, on an OSTree machine,
+  suggests `brew install qpdf` before `rpm-ostree install qpdf`.
+
 * Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-3
 - The window says why the service does not work: a diagnostics dialog with the
   unit's ExecStart, systemctl status, the service journal and a probe of every
