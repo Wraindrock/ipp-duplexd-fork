@@ -214,9 +214,8 @@ impl Config {
     /// Check everything the daemon needs before it is allowed to start, and
     /// everything the manager needs before it is allowed to save.
     pub fn validate(&self, locale: &str) -> Result<(), String> {
-        if self.printers.is_empty() {
-            return Err(crate::l10n::tr(locale, "config.err.empty", &[]));
-        }
+        // An empty file is a valid state: the window can remove its last
+        // printer, and the daemon then serves nothing until one is added again.
         let mut names: Vec<String> = Vec::new();
         let mut listens: Vec<String> = Vec::new();
         for printer in &self.printers {
@@ -413,9 +412,12 @@ real = "ipp://127.0.0.1:631/printers/laser"
     }
 
     #[test]
-    fn an_empty_file_is_refused() {
+    fn an_empty_file_is_valid() {
+        // Removing the last printer is something a person may want to do; the
+        // daemon then serves nothing until a printer is added again.
         let config = Config::parse("", Path::new("config.toml"), "en").expect("parse");
-        assert!(!config.validate("en").unwrap_err().is_empty());
+        config.validate("en").expect("an empty config is valid");
+        assert!(config.printers.is_empty());
     }
 
     #[test]

@@ -825,6 +825,34 @@ fn one_daemon_serves_two_virtual_printers() {
 }
 
 #[test]
+fn an_empty_configuration_keeps_the_daemon_alive() {
+    // Removing the last printer leaves a file with no [[printer]] at all. That
+    // is a valid state, and the daemon must sit there waiting for a reload
+    // instead of exiting into systemd's restart loop.
+    let dir = TestDir::new("empty-config");
+    let config = dir.path("config.toml");
+    std::fs::write(&config, "").unwrap();
+    let log = dir.path("daemon.log");
+
+    let mut daemon = Command::new(env!("CARGO_BIN_EXE_ipp-duplexd-fork"))
+        .args(["--config", config.to_str().unwrap()])
+        .env("IPP_DUPLEXD_FORK_LANG", "en")
+        .stderr(Stdio::from(std::fs::File::create(&log).unwrap()))
+        .spawn()
+        .expect("failed to start ipp-duplexd-fork");
+
+    std::thread::sleep(Duration::from_millis(700));
+    let status = daemon.try_wait().expect("try_wait");
+    let _ = daemon.kill();
+    let _ = daemon.wait();
+    let said = std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(
+        status.is_none(),
+        "the daemon exited with {status:?} on an empty config; it said: {said}"
+    );
+}
+
+#[test]
 fn a_running_daemon_adopts_a_configuration_file_written_later() {
     // The window writes config.toml, but a daemon started from the legacy
     // flags had no file when it started: reload must notice the file and

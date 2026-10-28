@@ -302,7 +302,9 @@ is there, as one tree:
   setup wizard makes. It needs `cups-client` (for `lpadmin`) and a printer that
   answers; a printer whose daemon is not running is registered the next time
   the window starts, which also repairs printers created by earlier versions.
-  Removing a printer removes its CUPS queue too.
+  Removing a printer removes its CUPS queue too; removing the last one leaves
+  an empty configuration, which is allowed — the daemon then serves nothing
+  until a printer is added again.
 - **Service** — what `systemctl --user` says about
   `ipp-duplexd-fork.service`, a button that restarts it, and — once a unit is
   there — **Uninstall**: the service is stopped and disabled and the unit this

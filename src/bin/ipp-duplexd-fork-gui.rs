@@ -942,7 +942,11 @@ fn commit(state: &Rc<State>) {
         .iter()
         .map(|printer| printer.listen.clone())
         .collect();
-    if gui::reload_everywhere(&addrs, locale) == 0 {
+    if addrs.is_empty() {
+        // The last printer is gone: nothing to reload, nothing to register and
+        // nothing to install a service for. Saving is the whole operation.
+        toast(state, &l10n::text(locale, "gui.window.saved"));
+    } else if gui::reload_everywhere(&addrs, locale) == 0 {
         // Nothing answers: either the unit is there but stopped, or this is
         // the very first save and there is no unit at all. The second case is
         // the one the terminal wizard used to be needed for.
