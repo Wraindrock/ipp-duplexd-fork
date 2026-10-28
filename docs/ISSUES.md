@@ -183,6 +183,7 @@ ipptool -tv ipp://127.0.0.1:<port>/ipp/print get-printer-attributes.test | grep 
 | [#3](https://github.com/Wraindrock/ipp-duplexd-fork/issues/3) | GUI 与后端能力对齐：六个旋钮、任务列表、队列重试 | 无 |
 | [#4](https://github.com/Wraindrock/ipp-duplexd-fork/issues/4) | GUI 助手在无法显示时返回 1 而不是 2，守护进程因此不回退 zenity | 无（有桌面会话的机器上可直接复现） |
 | [#5](https://github.com/Wraindrock/ipp-duplexd-fork/issues/5) | 把 qpdf 静态编进 AppImage（提案） | 无，需要决定是否做 |
+| [#8](https://github.com/Wraindrock/ipp-duplexd-fork/issues/8) | hplip 队列与 ipp-usb 抢设备：提示 + 一键切换 driverless（可还原） | 无 |
 
 ## 已做（2026-10-28 深夜）：#1 的 ipp-usb 依赖声明与提示
 
