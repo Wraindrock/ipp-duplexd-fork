@@ -37,7 +37,9 @@ app --> CUPS queue (driverless) --> ipp-duplexd-fork (127.0.0.1:6632)
 The three packages install `/usr/bin/ipp-duplexd-fork`, the
 `ipp-duplexd-fork-setup` helper, a systemd **user** unit, and docs, and depend on
 `qpdf` and the desktop's GTK4 and libadwaita; the AppImage is a test build for
-trying it without installing (see below).
+trying it without installing (see below). A **USB** printer needs one more
+piece — [`ipp-usb`][ipp-usb], which the packages recommend rather than require;
+see [USB printers](#usb-printers).
 Translations are compiled into the binaries, so there are no locale files to
 install or lose.
 
@@ -259,6 +261,39 @@ curl http://127.0.0.1:6632/flip
 ```
 
 `GET http://127.0.0.1:6632/` shows job status.
+
+## USB printers
+
+Everything here is IPP: the daemon accepts IPP jobs on a loopback port and
+forwards them to another IPP endpoint (`real`). A printer on the end of a USB
+cable does not speak IPP by itself, so it needs something that turns it into an
+IPP endpoint — that is [`ipp-usb`][ipp-usb]. It talks to the USB device and
+exposes it as a normal IPP printer on `ipp://localhost:60000/ipp/print` (60000
+is its default and the port it is usually found on).
+
+With `ipp-usb` running, a USB printer is configured like any other:
+
+```sh
+ipp-duplexd-fork-setup            # lists the 127.0.0.1:60000 printer it detects
+# or by hand:
+ipp-duplexd-fork --printer ipp://localhost:60000/ipp/print --listen 127.0.0.1:6632
+```
+
+Install it with your package manager — `sudo dnf install ipp-usb` (Fedora),
+`sudo apt install ipp-usb` (Debian/Ubuntu), `sudo pacman -S ipp-usb` (Arch,
+where it is in the `extra` repository). The packages list it as a
+*recommendation*, not a hard dependency: network printers and printers already
+behind CUPS never need it.
+
+**Do not run hplip at the same time.** HP's `hplip` (and the tools built on it)
+grabs the same USB device through its own backend; the two fight over it and
+printing fails. Pick one, and for this program that one is `ipp-usb` — it works
+for HP printers too. If a USB printer was working through hplip, remove hplip
+and let `ipp-usb` take the device; the two cannot share it.
+
+If `real` points at a loopback `60000` endpoint and `ipp-usb` is not installed,
+`GET /` on the virtual printer says so, instead of leaving jobs to fail with a
+timeout that looks like a broken printer.
 
 ## Desktop app (GTK4 + libadwaita)
 
@@ -635,6 +670,7 @@ cargo test
 
 [adw]: https://gitlab.gnome.org/GNOME/libadwaita
 [i18n]: https://github.com/longbridge/rust-i18n
+[ipp-usb]: https://github.com/OpenPrinting/ipp-usb
 [rfc8011-lang]: https://www.rfc-editor.org/rfc/rfc8011.html#section-5.1.9
 [upstream]: https://github.com/SamiKalliomaki/ipp-duplexd
 [repo]: https://wraindrock.github.io/ipp-duplexd-fork/

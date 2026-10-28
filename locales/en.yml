@@ -7,7 +7,7 @@ _version: 1
 common.save: "Save"
 common.cancel: "Cancel"
 common.remove: "Remove"
-
+common.ipp_usb_missing: "ipp-usb is not installed, but %{uri} is a USB printer that only exists as an IPP printer through ipp-usb (Fedora: sudo dnf install ipp-usb, Debian/Ubuntu: sudo apt install ipp-usb, Arch: sudo pacman -S ipp-usb). Do not run hplip on the same printer."
 
 # ---------------------------------------------- daemon: command line, startup
 daemon.usage: |

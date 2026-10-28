@@ -4,7 +4,7 @@ _version: 1
 common.save: "保存"
 common.cancel: "取消"
 common.remove: "删除"
-
+common.ipp_usb_missing: "本机没有安装 ipp-usb，而 %{uri} 是只能靠 ipp-usb 才能成为 IPP 打印机的 USB 打印机（Fedora：sudo dnf install ipp-usb；Debian/Ubuntu：sudo apt install ipp-usb；Arch：sudo pacman -S ipp-usb）。同一台打印机不要同时运行 hplip。"
 
 # ------------------------------------------------------------------ 通用
 

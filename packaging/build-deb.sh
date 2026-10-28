@@ -52,6 +52,7 @@ Section: net
 Priority: optional
 Architecture: $arch
 Depends: qpdf, libc6, libgtk-4-1, libadwaita-1-0 (>= 1.5)
+Recommends: ipp-usb
 Suggests: cups-client
 Installed-Size: $(du -sk "$stage" --exclude=DEBIAN | cut -f1)
 Maintainer: Sami Kalliomäki <sami@kalliomaki.me>
