@@ -121,6 +121,12 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 
 %changelog
 
+* Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-6
+- The AppImage carries update information (gh-releases-zsync) and every release
+  now attaches the matching .zsync, so Gear Lever's "check for updates" and
+  appimageupdatetool can replace the image in place. The build fails if the
+  information or the zsync is missing.
+
 * Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-5
 - The last virtual printer can be removed: an empty configuration is a valid
   state now, so the window no longer answers the trash button with "at least one
