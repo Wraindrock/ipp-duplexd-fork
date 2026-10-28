@@ -121,6 +121,12 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 
 %changelog
 
+* Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-5
+- The last virtual printer can be removed: an empty configuration is a valid
+  state now, so the window no longer answers the trash button with "at least one
+  [[printer]] entry is needed". The daemon keeps running with nothing to serve
+  and picks a printer up again on the next reload.
+
 * Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-4
 - The unit gives the daemon a PATH that includes ~/.local/bin and Homebrew's
   prefix, so a qpdf installed without root (the only option on an atomic
