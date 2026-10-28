@@ -159,3 +159,14 @@ ipptool -tv ipp://127.0.0.1:<port>/ipp/print get-printer-attributes.test | grep 
 1. **#1**（文档 + 打包依赖）：半天，零风险，直接消除“装了不能用”的支持成本。
 2. **#2**（fallback 媒体列表 + 建队列门槛 + B5 回归用例）：需要真机验证，但根因已定位。
 3. **#3**（旋钮 → 任务页 → 首启引导）：首启那一步已完成，剩下旋钮与任务视图。
+
+## 实机反馈（2026-10-28 22:00，bluefin VM）
+
+三个症状，一起修了：
+
+1. **服务显示 active，但端口没应答**。守护进程没有 qpdf 时会立刻退出，systemd 每 5 秒重启一次，`is-active` 在两次重启之间仍然报 active。窗口现在先检查 qpdf，缺了就不装，直接给安装命令。
+2. **AppImage 装出来的 unit 指向 `/tmp/.mount_*`**。窗口退出后挂载消失，服务随即失效，也是“反复安装”失败的一种来源。现在 AppImage 会先把自己复制到 `~/.local/share/ipp-duplexd-fork/`，unit 指向那份稳定副本（执行 `…AppImage daemon`），卸载时一并删除。
+3. **提示被截断、无法复制、没有日志入口**。新增“诊断”组与对话框：unit 的 `ExecStart=`、`systemctl --user status`、最近 80 行 journal、每个端口的探测结果，整块可选中并有“复制”按钮；安装后端口不应答时自动弹出。toast 只留成功提示。
+4. 顺带：上次安装没应答时，`probe_failed` 会让“这台电脑 / 安装服务”那行继续显示，可以再试一次，而不是看起来装好了。
+
+仍待确认：VM 上是否真的缺 qpdf（诊断对话框里的 journal 会直接写出来）。

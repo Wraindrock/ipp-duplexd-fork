@@ -219,7 +219,6 @@ pub struct WindowLabels {
     pub setup_button: String,
     pub setup_done: String,
     pub setup_failed: String,
-    pub setup_no_answer: String,
     pub service_not_installed: String,
     pub uninstall: String,
     pub uninstall_title: String,
@@ -227,6 +226,16 @@ pub struct WindowLabels {
     pub uninstalled: String,
     pub uninstalled_packaged: String,
     pub uninstall_failed: String,
+    pub diagnostics_title: String,
+    pub diagnostics_hint: String,
+    pub open: String,
+    pub copy: String,
+    pub copied: String,
+    pub close: String,
+    pub diag_answers: String,
+    pub requirements_title: String,
+    pub requirements_body: String,
+    pub not_answering_title: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -280,7 +289,6 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         setup_button: text("gui.window.setup_button"),
         setup_done: text("gui.window.setup_done"),
         setup_failed: text("gui.window.setup_failed"),
-        setup_no_answer: text("gui.window.setup_no_answer"),
         service_not_installed: text("gui.window.service_not_installed"),
         uninstall: text("gui.window.uninstall"),
         uninstall_title: text("gui.window.uninstall_title"),
@@ -288,6 +296,16 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         uninstalled: text("gui.window.uninstalled"),
         uninstalled_packaged: text("gui.window.uninstalled_packaged"),
         uninstall_failed: text("gui.window.uninstall_failed"),
+        diagnostics_title: text("gui.window.diagnostics_title"),
+        diagnostics_hint: text("gui.window.diagnostics_hint"),
+        open: text("gui.window.open"),
+        copy: text("gui.window.copy"),
+        copied: text("gui.window.copied"),
+        close: text("gui.window.close"),
+        diag_answers: text("gui.window.diag_answers"),
+        requirements_title: text("gui.window.requirements_title"),
+        requirements_body: text("gui.window.requirements_body"),
+        not_answering_title: text("gui.window.not_answering_title"),
     }
 }
 

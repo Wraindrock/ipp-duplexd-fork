@@ -260,7 +260,11 @@ is there, as one tree:
   `enable --now` it, waits for the daemon, and registers the queues. Saving the
   first printer does the same without a separate click, so a fresh machine can
   be set up from the window alone (the terminal wizard stays for machines with
-  no desktop; both write the same files).
+  no desktop; both write the same files). From an AppImage the image copies
+  itself to `~/.local/share/ipp-duplexd-fork/ipp-duplexd-fork.AppImage` first:
+  a unit pointing into the temporary mount would start a program that is gone
+  the moment the window closes. `qpdf` is checked before anything is installed,
+  because the daemon exits immediately without it.
 - **Virtual printers** — one row per printer in the
   [configuration file](#configuration-file), showing its listen address and
   the real printer behind it. Each row has four buttons: print the backs of
@@ -287,6 +291,12 @@ is there, as one tree:
   owns it). The printers, their CUPS queues and the configuration file stay, so
   **Set up** brings the same machine back; that is also how a first run can be
   tried on a machine that already has the service.
+- **Diagnostics** — **Open** shows one selectable, scrollable block: the unit
+  file and its `ExecStart=` line, `systemctl --user status`, the last 80 lines of
+  the service journal, and whether each configured port answers. **Copy** puts
+  it on the clipboard. The same dialog opens by itself when **Set up** installs
+  the service but nothing answers on the port — a toast cannot hold a journal
+  and cannot be copied.
 - **Settings** — the language of the window (and, after the next restart, of
   the daemon) and the path of the file the window writes.
 - **About** — the version and the project page.

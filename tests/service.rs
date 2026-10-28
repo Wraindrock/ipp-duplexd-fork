@@ -87,6 +87,7 @@ impl Drop for Machine {
         std::env::remove_var(service::DAEMON_ENV);
         std::env::remove_var(service::PACKAGED_ENV);
         std::env::remove_var(service::SYSTEMCTL_ENV);
+        std::env::remove_var("APPIMAGE");
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
@@ -242,4 +243,43 @@ fn an_environment_file_the_user_edited_survives_uninstalling() {
         machine.environment().is_file(),
         "a .conf with content is the user's, not ours"
     );
+}
+
+#[test]
+fn an_appimage_installs_a_stable_copy_and_points_the_unit_at_it() {
+    let _guard = guard();
+    let machine = Machine::new("appimage", None);
+    // What the AppImage runtime exports: a path inside a mount that disappears
+    // when the window exits.
+    let mount = machine
+        .dir
+        .join("ipp-duplexd-fork-2026.10.29-1-x86_64.AppImage");
+    std::fs::write(&mount, b"not really an AppImage").unwrap();
+    std::env::set_var("APPIMAGE", &mount);
+
+    let done = service::install(true).expect("install from an AppImage");
+
+    let copy = service::installed_image();
+    assert!(
+        copy.is_file(),
+        "the image should be copied to a stable path"
+    );
+    assert_eq!(
+        copy,
+        machine
+            .home
+            .join(".local/share/ipp-duplexd-fork/ipp-duplexd-fork.AppImage")
+    );
+    let unit = std::fs::read_to_string(&done.unit).unwrap();
+    assert!(
+        unit.contains(&format!("ExecStart={} daemon ", copy.display())),
+        "{unit}"
+    );
+    assert!(
+        !unit.contains(&mount.display().to_string()),
+        "the unit must not point into the temporary mount: {unit}"
+    );
+
+    service::uninstall().expect("uninstall");
+    assert!(!copy.is_file(), "uninstall takes the copied image with it");
 }

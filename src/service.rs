@@ -166,11 +166,84 @@ pub fn daemon_binary() -> Option<PathBuf> {
     })
 }
 
+/// What a unit has to start: the daemon binary, or a copy of the AppImage plus
+/// the `daemon` subcommand it dispatches on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exec {
+    pub path: PathBuf,
+    pub arguments: Vec<String>,
+}
+
+/// Where an AppImage puts itself when it is installed as a service.
+pub fn installed_image() -> PathBuf {
+    home()
+        .join(".local/share")
+        .join(UNIT)
+        .join(format!("{UNIT}.AppImage"))
+}
+
+/// The AppImage this process runs from, if any: the runtime exports its path in
+/// `$APPIMAGE`. The mount behind it disappears when the image exits, so a unit
+/// must never point at it.
+pub fn running_image() -> Option<PathBuf> {
+    std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+}
+
+/// Resolve what the unit should start. From an AppImage the image is copied to
+/// `~/.local/share/ipp-duplexd-fork/` first, because a unit pointing into the
+/// temporary mount starts a program that is gone the moment the window closes.
+pub fn exec_for_unit() -> Result<Exec, String> {
+    if let Some(image) = running_image() {
+        let target = installed_image();
+        if image != target {
+            if let Some(dir) = target.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            }
+            std::fs::copy(&image, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+            set_executable(&target)?;
+        }
+        return Ok(Exec {
+            path: target,
+            arguments: vec!["daemon".to_string()],
+        });
+    }
+    let daemon = daemon_binary().ok_or_else(|| {
+        format!("{UNIT} was not found next to the window, so there is nothing to start")
+    })?;
+    Ok(Exec {
+        path: daemon,
+        arguments: Vec::new(),
+    })
+}
+
+fn set_executable(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = std::fs::metadata(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(path, permissions).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// The unit file's text. With the window it is bound to the graphical session:
 /// it starts once the display variables exist and stops when they go away.
 /// Without it there is nothing session-bound about the daemon, so it runs for
 /// the whole login (it still answers `GET /flip` over ssh, with no desktop up).
 pub fn unit_text(daemon: &Path, gui: bool) -> String {
+    unit_text_with(
+        &Exec {
+            path: daemon.to_path_buf(),
+            arguments: Vec::new(),
+        },
+        gui,
+    )
+}
+
+/// [`unit_text`] for a command that needs arguments of its own, such as an
+/// AppImage, whose first argument is the subcommand to run.
+pub fn unit_text_with(exec: &Exec, gui: bool) -> String {
     let (session, wanted_by) = if gui {
         (
             "After=graphical-session.target\nPartOf=graphical-session.target\n",
@@ -178,6 +251,11 @@ pub fn unit_text(daemon: &Path, gui: bool) -> String {
         )
     } else {
         ("", "default.target")
+    };
+    let arguments = if exec.arguments.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", exec.arguments.join(" "))
     };
     // The `-` in EnvironmentFile= makes the file optional: the printers live in
     // config.toml, so a machine that never wrote the .conf still starts.
@@ -188,13 +266,44 @@ pub fn unit_text(daemon: &Path, gui: bool) -> String {
          {session}\n\
          [Service]\n\
          EnvironmentFile=-%h/.config/ipp-duplexd-fork.conf\n\
-         ExecStart={} $IPP_DUPLEXD_FORK_ARGS\n\
+         ExecStart={}{arguments} $IPP_DUPLEXD_FORK_ARGS\n\
          Restart=on-failure\n\
          RestartSec=5\n\n\
          [Install]\n\
          WantedBy={wanted_by}\n",
-        daemon.display()
+        exec.path.display()
     )
+}
+
+/// `systemctl --user status`, for the window's diagnostics.
+pub fn status_text() -> String {
+    tool_text(
+        &systemctl(),
+        &["--user", "status", UNIT, "--no-pager", "-l", "--lines=0"],
+    )
+}
+
+/// The unit's recent journal, for the same dialog.
+pub fn journal_text(lines: usize) -> String {
+    let count = format!("-n{lines}");
+    tool_text("journalctl", &["--user", "-u", UNIT, "--no-pager", &count])
+}
+
+/// Run a program and return what it said, stdout and stderr together: a
+/// diagnostic is not the place to be picky about which stream a tool used.
+fn tool_text(program: &str, args: &[&str]) -> String {
+    match Command::new(program).args(args).output() {
+        Ok(out) => {
+            let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+            let errors = String::from_utf8_lossy(&out.stderr);
+            if !errors.trim().is_empty() {
+                text.push_str(errors.trim_end());
+                text.push('\n');
+            }
+            text
+        }
+        Err(e) => format!("{program}: {e}\n"),
+    }
 }
 
 /// Write the unit if the package did not, make sure the environment file the
@@ -209,10 +318,8 @@ pub fn install(gui: bool) -> Result<Install, String> {
     let unit = match packaged_unit() {
         Some(path) => path,
         None => {
-            let daemon = daemon_binary().ok_or_else(|| {
-                format!("{UNIT} was not found next to the window, so there is nothing to start")
-            })?;
-            let text = unit_text(&daemon, gui);
+            let exec = exec_for_unit()?;
+            let text = unit_text_with(&exec, gui);
             let same = std::fs::read_to_string(&user_unit)
                 .map(|old| old == text)
                 .unwrap_or(false);
@@ -291,6 +398,10 @@ pub fn uninstall() -> Result<Uninstall, String> {
             let _ = std::fs::remove_file(&environment);
         }
     }
+    // An AppImage installed itself as a stable copy, and that copy exists only
+    // for the unit. Unlinking the image we are running from is harmless: the
+    // mount is already open.
+    let _ = std::fs::remove_file(installed_image());
     Ok(Uninstall {
         unit,
         removed_unit,
@@ -332,6 +443,22 @@ mod tests {
         assert!(
             path.ends_with("systemd/user/ipp-duplexd-fork.service"),
             "{path:?}"
+        );
+    }
+
+    #[test]
+    fn an_appimage_unit_runs_the_daemon_subcommand() {
+        let exec = Exec {
+            path: PathBuf::from("/home/x/.local/share/ipp-duplexd-fork/ipp-duplexd-fork.AppImage"),
+            arguments: vec!["daemon".to_string()],
+        };
+        let unit = unit_text_with(&exec, true);
+        assert!(
+            unit.contains(
+                "ExecStart=/home/x/.local/share/ipp-duplexd-fork/ipp-duplexd-fork.AppImage daemon \
+                 $IPP_DUPLEXD_FORK_ARGS"
+            ),
+            "{unit}"
         );
     }
 }

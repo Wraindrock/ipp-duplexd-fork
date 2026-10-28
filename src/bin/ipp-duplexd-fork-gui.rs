@@ -34,7 +34,7 @@ use libadwaita as adw;
 use rust_i18n::t;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -241,6 +241,7 @@ fn run_window(locale: &'static str, hooks: Hooks) -> Result<u8, String> {
             path: path.clone(),
             config: RefCell::new(config.clone()),
             file_error: file_error.clone(),
+            probe_failed: Cell::new(false),
             window: window.clone(),
             toolbar: toolbar.clone(),
             overlay: overlay.clone(),
@@ -320,6 +321,10 @@ struct State {
     /// Set when the file exists but could not be read: the window shows the
     /// error and refuses to save until the file is fixed.
     file_error: Option<String>,
+    /// Whether the last install could not reach the daemon. The row stays
+    /// visible then, so a machine whose service "is running" but answers
+    /// nothing can be set up again instead of looking finished.
+    probe_failed: Cell<bool>,
 }
 
 /// Rebuild the page from the configuration in `state`. Cheap enough to do
@@ -337,11 +342,12 @@ fn build_page(state: &Rc<State>) -> adw::PreferencesPage {
     // First run: there is no unit yet, or one that was never started. The row
     // is the whole difference between "the window only shows printers" and
     // "the window can set the machine up", so it comes before the printers.
-    if setup_needed() {
+    if setup_needed(state) {
         page.add(&setup_group(state, &labels));
     }
     page.add(&printers_group(state, &labels));
     page.add(&service_group(state, &labels));
+    page.add(&diagnostics_group(state, &labels));
     page.add(&settings_group(state, &labels));
     page.add(&about_group(&labels));
 
@@ -349,8 +355,8 @@ fn build_page(state: &Rc<State>) -> adw::PreferencesPage {
 }
 
 /// Whether the machine still needs the service installed or started.
-fn setup_needed() -> bool {
-    !service::installed() || !service::is_active()
+fn setup_needed(state: &Rc<State>) -> bool {
+    !service::installed() || !service::is_active() || state.probe_failed.get()
 }
 
 /// The first-run row: one button that installs (or starts) the service, so the
@@ -386,6 +392,22 @@ fn start_setup(state: &Rc<State>) {
         editor(state, None);
         return;
     }
+    // A daemon that cannot even start is worse than one that is missing: check
+    // the one program it refuses to run without before installing anything.
+    if let Some((what, hint)) = missing_requirements().first() {
+        let title = l10n::tr(
+            locale,
+            "gui.window.requirements_title",
+            &[("what", what.to_string())],
+        );
+        let body = l10n::tr(
+            locale,
+            "gui.window.requirements_body",
+            &[("what", what.to_string()), ("hint", hint.to_string())],
+        );
+        show_text(state, &title, &body);
+        return;
+    }
     match service::install(true) {
         Ok(_) => toast(state, &l10n::text(locale, "gui.window.setup_done")),
         Err(e) => {
@@ -397,22 +419,31 @@ fn start_setup(state: &Rc<State>) {
         }
     }
     if wait_for_daemon(state, locale) {
+        state.probe_failed.set(false);
         register_queues(state);
     } else {
-        let addrs = state
-            .config
-            .borrow()
-            .printers
-            .iter()
-            .map(|p| p.listen.clone())
-            .collect::<Vec<_>>()
-            .join(", ");
-        toast(
-            state,
-            &l10n::tr(locale, "gui.window.setup_no_answer", &[("addr", addrs)]),
-        );
+        state.probe_failed.set(true);
+        // A toast cannot hold `systemctl status` and a journal, and it cannot be
+        // copied; the window this is reported to is the diagnostics dialog.
+        let title = l10n::text(locale, "gui.window.not_answering_title");
+        let body = diagnostics_text(state);
+        show_text(state, &title, &body);
     }
     idle_rebuild(state);
+}
+
+/// The programs the daemon needs before it can do anything at all, with the one
+/// line that installs each. Only `qpdf` is fatal at startup; without it the
+/// service restarts forever and never listens.
+fn missing_requirements() -> Vec<(&'static str, &'static str)> {
+    let mut missing = Vec::new();
+    if Command::new("qpdf").arg("--version").output().is_err() {
+        missing.push((
+            "qpdf",
+            "dnf install qpdf   ·   apt install qpdf   ·   pacman -S qpdf",
+        ));
+    }
+    missing
 }
 
 /// The daemon binds its sockets right after `enable --now`, but systemd starts
@@ -438,6 +469,135 @@ fn wait_for_daemon(state: &Rc<State>, locale: &str) -> bool {
         std::thread::sleep(Duration::from_millis(250));
     }
     false
+}
+
+/// Everything needed to answer "why is it not printing", in one selectable
+/// block: what the unit runs, what systemd thinks of it, the service journal,
+/// and whether each port answers.
+fn diagnostics_text(state: &Rc<State>) -> String {
+    let locale = state.locale.get();
+    let mut out = String::new();
+    out.push_str(&format!("{} {}\n", gui::NAME, env!("CARGO_PKG_VERSION")));
+    if let Some(image) = service::running_image() {
+        out.push_str(&format!("AppImage: {}\n", image.display()));
+        out.push_str(&format!(
+            "installed copy: {}\n",
+            service::installed_image().display()
+        ));
+    }
+    let unit = service::packaged_unit().unwrap_or_else(service::user_unit_path);
+    out.push_str(&format!("unit: {}\n", unit.display()));
+    match std::fs::read_to_string(&unit) {
+        Ok(text) => {
+            for line in text.lines().filter(|line| {
+                line.starts_with("ExecStart=") || line.starts_with("EnvironmentFile=")
+            }) {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        Err(e) => out.push_str(&format!("unit file: {e}\n")),
+    }
+    out.push_str("\n--- systemctl --user status ---\n");
+    out.push_str(&service::status_text());
+    out.push_str("\n--- journal ---\n");
+    out.push_str(&service::journal_text(80));
+    out.push_str("\n--- virtual printers ---\n");
+    let printers: Vec<(String, String)> = state
+        .config
+        .borrow()
+        .printers
+        .iter()
+        .map(|printer| (printer.name.clone(), printer.listen.clone()))
+        .collect();
+    for (name, listen) in printers {
+        let line = match gui::http_get(&listen, "/", locale) {
+            Ok(_) => l10n::tr(
+                locale,
+                "gui.window.diag_answers",
+                &[("listen", listen.clone())],
+            ),
+            Err(e) => l10n::tr(
+                locale,
+                "gui.window.unreachable",
+                &[("addr", listen.clone()), ("err", e)],
+            ),
+        };
+        out.push_str(&format!("{name}: {line}\n"));
+    }
+    out
+}
+
+/// A dialog for text a person may need to read twice, select and paste
+/// somewhere else: wrapped, scrollable, selectable, with a Copy button. Toasts
+/// are for "saved", not for a journal.
+fn show_text(state: &Rc<State>, title: &str, body: &str) {
+    let locale = state.locale.get();
+    let labels = gui::window_labels(locale);
+
+    let label = gtk::Label::new(Some(body));
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_selectable(true);
+    label.set_xalign(0.0);
+    label.set_valign(gtk::Align::Start);
+    let scroller = gtk::ScrolledWindow::new();
+    scroller.set_child(Some(&label));
+    scroller.set_min_content_height(340);
+    scroller.set_min_content_width(620);
+    scroller.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
+
+    let body_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    body_box.append(&scroller);
+    let copy = gtk::Button::with_label(&labels.copy);
+    copy.add_css_class("flat");
+    copy.set_halign(gtk::Align::End);
+    {
+        let state = state.clone();
+        let text = body.to_string();
+        let copied = labels.copied.clone();
+        copy.connect_clicked(move |_| {
+            // RootExt::display and WidgetExt::display both apply to a window, so
+            // name the one that returns the GdkDisplay this clipboard lives on.
+            let display = gtk::prelude::WidgetExt::display(&state.window);
+            display.clipboard().set_text(&text);
+            toast(&state, &copied);
+        });
+    }
+    body_box.append(&copy);
+
+    let dialog = adw::AlertDialog::builder()
+        .heading(title)
+        .extra_child(&body_box)
+        .build();
+    dialog.add_response("close", &labels.close);
+    dialog.set_close_response("close");
+    dialog.present(Some(&state.window));
+}
+
+fn diagnostics_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::new();
+    group.set_title(&labels.diagnostics_title);
+
+    let row = adw::ActionRow::builder()
+        .title(&labels.status_title)
+        .subtitle(&labels.diagnostics_hint)
+        .build();
+    row.set_subtitle_lines(2);
+    let open = gtk::Button::with_label(&labels.open);
+    open.add_css_class("flat");
+    {
+        let state = state.clone();
+        open.connect_clicked(move |_| {
+            let body = diagnostics_text(&state);
+            let locale = state.locale.get();
+            let title = l10n::text(locale, "gui.window.diagnostics_title");
+            show_text(&state, &title, &body);
+        });
+    }
+    row.add_suffix(&open);
+    group.add(&row);
+    group
 }
 
 fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {
@@ -568,6 +728,7 @@ fn confirm_uninstall(state: &Rc<State>) {
 
 fn uninstall_service(state: &Rc<State>) {
     let locale = state.locale.get();
+    state.probe_failed.set(false);
     match service::uninstall() {
         Ok(done) => {
             let key = if done.packaged {
