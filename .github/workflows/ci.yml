@@ -221,10 +221,11 @@ jobs:
           grep -q 'ipp://127.0.0.1:6699/ipp/print' "$dir/calls"
 
       # First run from the window: the machine has no unit, so "Set up" has to
-      # write one, create the .conf the unit names, and enable it. systemctl is
-      # a stub, so the files are proven without a systemd session and without
-      # touching the runner's own configuration.
-      - name: The window installs the service on first run
+      # write one, create the .conf the unit names, and enable it. Then the
+      # other direction, which has to put the machine back into exactly that
+      # state. systemctl is a stub, so the files are proven without a systemd
+      # session and without touching the runner's own configuration.
+      - name: The window installs the service on first run, and uninstalls it
         run: |
           set -eux
           dir=$(mktemp -d)
@@ -248,6 +249,14 @@ jobs:
           grep -q 'PartOf=graphical-session.target' "$unit"
           test -f "$dir/home/.config/ipp-duplexd-fork.conf"
           grep -q -- '--user enable --now ipp-duplexd-fork' "$dir/calls"
+          env HOME="$dir/home" \
+            IPP_DUPLEXD_FORK_CONFIG="$dir/config.toml" \
+            IPP_DUPLEXD_FORK_SYSTEMCTL="$dir/systemctl" \
+            IPP_DUPLEXD_FORK_GUI_TEST=uninstall \
+            xvfb-run -a ./target/debug/ipp-duplexd-fork-gui --lang en
+          test ! -f "$unit"
+          test ! -f "$dir/home/.config/ipp-duplexd-fork.conf"
+          grep -q -- '--user disable --now ipp-duplexd-fork' "$dir/calls"
 
       # No display: the daemon must not mistake that for a confirmation.
       - name: Without a display the dialog says so and exits 2

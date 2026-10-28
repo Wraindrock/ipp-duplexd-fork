@@ -281,7 +281,12 @@ is there, as one tree:
   the window starts, which also repairs printers created by earlier versions.
   Removing a printer removes its CUPS queue too.
 - **Service** — what `systemctl --user` says about
-  `ipp-duplexd-fork.service`, and a button that restarts it.
+  `ipp-duplexd-fork.service`, a button that restarts it, and — once a unit is
+  there — **Uninstall**: the service is stopped and disabled and the unit this
+  window wrote is deleted (a packaged unit is only stopped, because the package
+  owns it). The printers, their CUPS queues and the configuration file stay, so
+  **Set up** brings the same machine back; that is also how a first run can be
+  tried on a machine that already has the service.
 - **Settings** — the language of the window (and, after the next restart, of
   the daemon) and the path of the file the window writes.
 - **About** — the version and the project page.

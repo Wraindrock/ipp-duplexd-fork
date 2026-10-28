@@ -145,7 +145,9 @@ ipptool -tv ipp://127.0.0.1:<port>/ipp/print get-printer-attributes.test | grep 
 | `.github/workflows/ci.yml` | 新增 Xvfb 步骤 `IPP_DUPLEXD_FORK_GUI_TEST=setup`：临时 HOME + systemctl 打桩，断言 unit、`.conf` 和 `enable --now` 都发生 |
 | `README.md` | 首启说明 + 窗口功能树里的“First run”一条 |
 
-验证：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo clippy --all-targets --features gui -- -D warnings` 全绿；`cargo test` 与 `cargo test --features gui` 全绿（lib 45、e2e 11、i18n 14、新 `tests/service.rs` 4、`tests/gui.rs` 3），并在本机用 `IPP_DUPLEXD_FORK_GUI_TEST=setup` 真跑了一次窗口（临时 HOME、stub `systemctl`/`lpadmin`），确认写出的 unit 指向 `target/debug/ipp-duplexd-fork`、`.conf` 已补、`daemon-reload`/`enable --now`/`restart` 都发生。
+**卸载（同一批，第二轮）**：`service::uninstall()` 停用并删除窗口自己写的 unit（软件包的 unit 只停不删），`~/.config/ipp-duplexd-fork.conf` 只在内容仍是那段注释时才删（用户改过就留下）；打印机、CUPS 队列、`config.toml` 全部保留。窗口的 Service 行多一个“卸载”按钮，确认后执行。这样“卸载 → 安装服务”可以反复跑，用来在一台已经装过的机器上测首启。CI 的 Xvfb 步骤现在连跑两遍（setup 再 uninstall），断言 unit 出现、再消失。
+
+验证：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo clippy --all-targets --features gui -- -D warnings` 全绿；`cargo test` 与 `cargo test --features gui` 全绿（lib 45、e2e 11、i18n 14、`tests/service.rs` 7、`tests/gui.rs` 3）。本机实跑过完整循环：`setup` → unit 与 `.conf` 出现；`uninstall` → 两者消失且 `disable --now` 被调用；再 `setup` → 两者回来。
 
 两个与环境有关的注意点：
 

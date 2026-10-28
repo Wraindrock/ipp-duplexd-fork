@@ -45,13 +45,26 @@ rust_i18n::i18n!("locales", fallback = "en");
 const DECLINE: &str = "decline";
 const ACCEPT: &str = "accept";
 
+/// What the window should do by itself, for the Xvfb smoke tests. One per
+/// value of `IPP_DUPLEXD_FORK_GUI_TEST`; a real run has none of them.
+#[derive(Debug, Clone, Copy, Default)]
+struct Hooks {
+    window: bool,
+    add: bool,
+    setup: bool,
+    uninstall: bool,
+}
+
 fn main() -> ExitCode {
     let default_lang = l10n::from_env().unwrap_or(l10n::FALLBACK);
     let hook = std::env::var(gui::TEST_ENV).ok();
     let answer = gui::test_answer(hook.as_deref());
-    let window_test = gui::window_test(hook.as_deref());
-    let add_test = gui::add_test(hook.as_deref());
-    let setup_test = gui::setup_test(hook.as_deref());
+    let hooks = Hooks {
+        window: gui::window_test(hook.as_deref()),
+        add: gui::add_test(hook.as_deref()),
+        setup: gui::setup_test(hook.as_deref()),
+        uninstall: gui::uninstall_test(hook.as_deref()),
+    };
     let args = match gui::parse_args(std::env::args().skip(1), default_lang, answer) {
         Ok(args) => args,
         Err(e) => {
@@ -79,7 +92,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Mode::Window => match run_window(args.lang, window_test, add_test, setup_test) {
+        Mode::Window => match run_window(args.lang, hooks) {
             Ok(code) => ExitCode::from(code),
             Err(e) => {
                 eprintln!("{}: {e}", gui::NAME);
@@ -173,12 +186,7 @@ fn run_flip_dialog(
 /// re-read it (`POST /reload`); when nobody answers, restart the user service.
 /// The window never talks to the real printer itself and never holds state the
 /// file does not have.
-fn run_window(
-    locale: &'static str,
-    window_test: bool,
-    add_test: bool,
-    setup_test: bool,
-) -> Result<u8, String> {
+fn run_window(locale: &'static str, hooks: Hooks) -> Result<u8, String> {
     adw::init().map_err(|e| {
         l10n::tr(
             locale,
@@ -251,7 +259,7 @@ fn run_window(
         // desktop's printer settings list them.
         register_queues(&state);
 
-        if add_test {
+        if hooks.add {
             // The Xvfb smoke test also opens the "+" dialog, so the detection
             // list and the collapsed "Advanced" section are built for real.
             let state = state.clone();
@@ -259,7 +267,7 @@ fn run_window(
                 editor(&state, None);
             });
         }
-        if setup_test {
+        if hooks.setup {
             // The smoke test presses "Set up" itself, so the first-run install
             // runs for real: a stub systemctl and a temporary HOME make it
             // write the unit without touching the machine running the test.
@@ -268,19 +276,27 @@ fn run_window(
                 start_setup(&state);
             });
         }
-        if window_test || add_test || setup_test {
+        if hooks.uninstall {
+            // And the other direction: uninstall must put the machine back into
+            // the state the "Set up" row is for, so a test loop can repeat.
+            let state = state.clone();
+            glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                uninstall_service(&state);
+            });
+        }
+        if hooks.window || hooks.add || hooks.setup || hooks.uninstall {
             // The Xvfb smoke test needs the real window to be built and shown,
             // then to go away without a user.
             let window = window.clone();
             let app = app.clone();
-            let delay = if add_test {
+            let delay = if hooks.add {
                 1200
-            } else if setup_test {
+            } else if hooks.setup {
                 // Long enough for the install, and for the wait for a daemon
                 // that the test machine does not run.
                 8000
             } else {
-                400
+                2000
             };
             glib::timeout_add_local_once(Duration::from_millis(delay), move || {
                 window.close();
@@ -508,9 +524,65 @@ fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Preferen
         restart.connect_clicked(move |_| restart_service(&state));
     }
     row.add_suffix(&restart);
+    // The other half of "Set up": with no unit left, the row comes back and the
+    // machine can be set up again — which is also how the first run is tested on
+    // a machine that already has the service.
+    if service::installed() {
+        let uninstall = gtk::Button::with_label(&labels.uninstall);
+        uninstall.add_css_class("flat");
+        uninstall.add_css_class("destructive-action");
+        {
+            let state = state.clone();
+            uninstall.connect_clicked(move |_| confirm_uninstall(&state));
+        }
+        row.add_suffix(&uninstall);
+    }
     group.add(&row);
 
     group
+}
+
+/// Ask before removing a unit: the printers stay, but a service that vanishes
+/// under a running print job is still worth a confirmation.
+fn confirm_uninstall(state: &Rc<State>) {
+    let locale = state.locale.get();
+    let labels = gui::window_labels(locale);
+    let dialog = adw::AlertDialog::builder()
+        .heading(&labels.uninstall_title)
+        .body(&labels.uninstall_body)
+        .build();
+    dialog.add_response("cancel", &labels.cancel);
+    dialog.add_response("uninstall", &labels.uninstall);
+    dialog.set_response_appearance("uninstall", adw::ResponseAppearance::Destructive);
+    dialog.set_close_response("cancel");
+    {
+        let state = state.clone();
+        dialog.connect_response(None, move |_, response| {
+            if response == "uninstall" {
+                uninstall_service(&state);
+            }
+        });
+    }
+    dialog.present(Some(&state.window));
+}
+
+fn uninstall_service(state: &Rc<State>) {
+    let locale = state.locale.get();
+    match service::uninstall() {
+        Ok(done) => {
+            let key = if done.packaged {
+                "gui.window.uninstalled_packaged"
+            } else {
+                "gui.window.uninstalled"
+            };
+            toast(state, &l10n::text(locale, key));
+        }
+        Err(e) => toast(
+            state,
+            &l10n::tr(locale, "gui.window.uninstall_failed", &[("err", e)]),
+        ),
+    }
+    idle_rebuild(state);
 }
 
 fn settings_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {

@@ -90,6 +90,13 @@ pub fn setup_test(raw: Option<&str>) -> bool {
     raw == Some("setup")
 }
 
+/// `IPP_DUPLEXD_FORK_GUI_TEST=uninstall` presses the uninstall button (and the
+/// confirmation that follows it) by itself, so the whole cycle — install,
+/// uninstall, install again — can be driven without a person.
+pub fn uninstall_test(raw: Option<&str>) -> bool {
+    raw == Some("uninstall")
+}
+
 /// Parse the helper's command line. `default_lang` is the environment's choice
 /// (passed in rather than read here, so tests are not at the mercy of the
 /// environment they run in).
@@ -214,6 +221,12 @@ pub struct WindowLabels {
     pub setup_failed: String,
     pub setup_no_answer: String,
     pub service_not_installed: String,
+    pub uninstall: String,
+    pub uninstall_title: String,
+    pub uninstall_body: String,
+    pub uninstalled: String,
+    pub uninstalled_packaged: String,
+    pub uninstall_failed: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -269,6 +282,12 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         setup_failed: text("gui.window.setup_failed"),
         setup_no_answer: text("gui.window.setup_no_answer"),
         service_not_installed: text("gui.window.service_not_installed"),
+        uninstall: text("gui.window.uninstall"),
+        uninstall_title: text("gui.window.uninstall_title"),
+        uninstall_body: text("gui.window.uninstall_body"),
+        uninstalled: text("gui.window.uninstalled"),
+        uninstalled_packaged: text("gui.window.uninstalled_packaged"),
+        uninstall_failed: text("gui.window.uninstall_failed"),
     }
 }
 

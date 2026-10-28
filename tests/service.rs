@@ -175,3 +175,71 @@ fn without_a_daemon_the_install_says_what_is_missing() {
     assert!(error.contains("ipp-duplexd-fork"), "{error}");
     assert!(!machine.calls().contains("enable"), "systemd was not asked");
 }
+
+#[test]
+fn uninstalling_stops_the_unit_and_removes_what_it_wrote() {
+    let _guard = guard();
+    let machine = Machine::new("uninstall", None);
+    service::install(true).expect("install");
+    assert!(machine.unit().is_file());
+
+    let done = service::uninstall().expect("uninstall");
+
+    assert!(done.removed_unit, "our own unit should be deleted");
+    assert!(!done.packaged);
+    assert!(done.stopped, "the stub systemctl succeeded");
+    assert!(!machine.unit().is_file(), "the unit is still there");
+    assert!(
+        !machine.environment().is_file(),
+        "the .conf we wrote is still there"
+    );
+    let calls = machine.calls();
+    assert!(
+        calls.contains("--user disable --now ipp-duplexd-fork"),
+        "{calls}"
+    );
+    // ... and the machine is back to "no unit", which is what the row needs.
+    assert!(!service::installed());
+}
+
+#[test]
+fn a_packaged_unit_survives_uninstalling() {
+    let _guard = guard();
+    let dir = tempdir("uninstall-packaged");
+    let packaged = dir.join("ipp-duplexd-fork.service");
+    std::fs::write(&packaged, "[Unit]\nDescription=from the package\n").unwrap();
+    let machine = Machine::new("uninstall-packaged-home", Some(&packaged));
+
+    let done = service::uninstall().expect("uninstall");
+
+    assert!(done.packaged);
+    assert!(!done.removed_unit, "the package owns its unit");
+    assert!(packaged.is_file(), "the packaged unit was deleted");
+    assert!(
+        machine
+            .calls()
+            .contains("--user disable --now ipp-duplexd-fork"),
+        "{}",
+        machine.calls()
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_environment_file_the_user_edited_survives_uninstalling() {
+    let _guard = guard();
+    let machine = Machine::new("uninstall-conf", None);
+    service::install(true).expect("install");
+    std::fs::write(
+        machine.environment(),
+        "IPP_DUPLEXD_FORK_ARGS=--lang zh-CN\n",
+    )
+    .unwrap();
+
+    service::uninstall().expect("uninstall");
+
+    assert!(
+        machine.environment().is_file(),
+        "a .conf with content is the user's, not ours"
+    );
+}

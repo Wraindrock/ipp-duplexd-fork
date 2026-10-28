@@ -250,6 +250,55 @@ pub fn install(gui: bool) -> Result<Install, String> {
     })
 }
 
+/// What [`uninstall`] did, so the window can say something specific about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Uninstall {
+    /// The unit that was in use: the package's, or the one written here.
+    pub unit: PathBuf,
+    /// Whether this run deleted the unit (only ever one we wrote).
+    pub removed_unit: bool,
+    /// Whether `systemctl --user disable --now` succeeded.
+    pub stopped: bool,
+    /// Whether the unit belongs to the package, which keeps it.
+    pub packaged: bool,
+}
+
+/// The other half of [`install`]: stop and disable the service, and delete the
+/// unit if this program wrote it. The configuration file, the printers and
+/// their CUPS queues are left alone — they are the user's, and installing again
+/// brings the service back behind them. Nothing here needs root: a unit in
+/// `/usr` belongs to the package and is only stopped.
+pub fn uninstall() -> Result<Uninstall, String> {
+    let packaged = packaged_unit();
+    let user_unit = user_unit_path();
+    let unit = packaged.clone().unwrap_or_else(|| user_unit.clone());
+    // Stop it first: while the daemon runs it holds the listen sockets and CUPS
+    // keeps sending jobs to a service that is about to disappear.
+    let stopped = run(&["--user", "disable", "--now", UNIT]).is_ok();
+    let mut removed_unit = false;
+    if packaged.is_none() && user_unit.is_file() {
+        std::fs::remove_file(&user_unit).map_err(|e| format!("{}: {e}", user_unit.display()))?;
+        removed_unit = true;
+    }
+    // Best effort: with the file gone the next reload forgets the unit anyway,
+    // and a machine without systemd still had its unit removed.
+    let _ = run(&["--user", "daemon-reload"]);
+    // The .conf exists only because the unit names it. Drop it when it is still
+    // the comment block this program wrote; anything else is the user's.
+    let environment = environment_file();
+    if let Ok(text) = std::fs::read_to_string(&environment) {
+        if text == ENVIRONMENT_BOOTSTRAP {
+            let _ = std::fs::remove_file(&environment);
+        }
+    }
+    Ok(Uninstall {
+        unit,
+        removed_unit,
+        stopped,
+        packaged: packaged.is_some(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
