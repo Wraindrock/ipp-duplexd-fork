@@ -228,6 +228,18 @@ gui.window.detected_failed: "本机 CUPS 没有应答（%{err}）；也可以手
 gui.window.advanced: "高级"
 gui.window.advanced_hint: "名称、监听地址和打印机 URI"
 gui.window.unreachable: "连不上 %{addr}（%{err}）"
+gui.window.hplip_hint: "%{queue} 由 hplip 驱动（hp:/usb/…），而 ipp-usb 正占着这台设备：作业会一直打不出来"
+gui.window.hplip_tooltip: "把这条队列从 hplip 切走"
+gui.window.hplip_title: "把 %{queue} 切到 ipp-usb？"
+gui.window.hplip_body: "%{queue} 现在走 hplip 的 USB 后端，而 ipp-usb 正占着这台打印机，两边抢同一个设备，谁也打不了。切换之后这条队列直接对 ipp-usb 说话；hplip 不会被卸载，旧的设备 URI 和 PPD 会存下来，随时可以切回去。"
+gui.window.hplip_switch: "切换"
+gui.window.hplip_done: "%{queue} 现在通过 ipp-usb 打印"
+gui.window.hplip_failed: "切换 %{queue} 失败：%{err}"
+gui.window.hplip_backup_title: "已从 hplip 切走的队列"
+gui.window.hplip_backup_subtitle: "%{device} —— 是主动切走的，可以在这里切回去"
+gui.window.hplip_restore: "切回 hplip"
+gui.window.hplip_restored: "%{queue} 已切回 %{device}"
+gui.window.hplip_restore_failed: "切回 %{queue} 失败：%{err}"
 
 # ---------------------------------------------------------------- 安装向导
 setup.usage: |
