@@ -85,6 +85,11 @@ grep -Eq '^/usr/share/licenses/ipp-duplexd-fork[^/]*/LICENSE$' <<<"$listing" \
 grep -Fxq 'qpdf' <<<"$requires" || problems+=("no qpdf dependency")
 grep -Fxq 'gtk4' <<<"$requires" || problems+=("no gtk4 dependency")
 grep -Fxq 'libadwaita' <<<"$requires" || problems+=("no libadwaita dependency")
+# ipp-usb is what turns a USB printer into an IPP printer. It is a weak
+# dependency (network printers and CUPS queues do not need it), so it lands in
+# the recommendation list, which -qpR does not print.
+recommends=$(rpm --dbpath "$top/db" -qp --recommends "$out")
+grep -Fxq 'ipp-usb' <<<"$recommends" || problems+=("no ipp-usb recommendation")
 # the catalogs are compiled into the binaries; nothing should be installed for
 # them, and if something is, the file list and the spec drifted apart
 if grep -Eq 'locales|\.yml$' <<<"$listing"; then
