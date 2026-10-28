@@ -121,6 +121,14 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 
 %changelog
 
+* Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-1
+- The window can install the user service itself: it writes the unit when the
+  package did not, creates the environment file the unit names, and enables it,
+  so a machine with no unit no longer needs the terminal wizard before the
+  first print. Saving the first virtual printer does the same.
+- The packaged unit marks the environment file optional, so a machine that never
+  created one still starts instead of failing to load the unit.
+
 * Tue Oct 27 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.27-1
 - Install the desktop entry and the application icon, so the window appears in
   the desktop's application menu and its windows carry the right icon. The
