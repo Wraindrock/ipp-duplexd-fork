@@ -198,5 +198,18 @@ ipptool -tv ipp://127.0.0.1:<port>/ipp/print get-printer-attributes.test | grep 
 | `src/bin/ipp-duplexd-fork-gui.rs` | 诊断对话框在对应打印机下面加同一行 |
 | `locales/{en,zh-CN}.yml` | `common.ipp_usb_missing`（中英各一条） |
 
-验证：`cargo fmt --check`、`cargo clippy --all-targets`、`cargo test`（lib 51、e2e 12、i18n 14、`tests/service.rs` 9）全绿；`--features gui` 的编译、测试和打包走 CI（本机没有 gtk4-devel，只有运行时库）。状态页手动跑了五种组合：本机 `60000` + 无 ipp-usb 出提示（中英各一次），`127.0.0.1:631` 队列、远端 `:60000`、装了 ipp-usb 本机 `:60000` 都不出。
+验证：`cargo fmt --check`、`cargo clippy --all-targets`、`cargo test`（lib 51、e2e 12、i18n 14、`tests/service.rs` 9）全绿；`--features gui` 的编译、测试和打包先走 CI（本机当时没有 gtk4-devel，只有运行时库；后面 #4 那节补了本地编法）。状态页手动跑了五种组合：本机 `60000` + 无 ipp-usb 出提示（中英各一次），`127.0.0.1:631` 队列、远端 `:60000`、装了 ipp-usb 本机 `:60000` 都不出。
+
+## 已做（2026-10-28 深夜）：#4 对话框没显示出来时返回 2
+
+症状：会话看起来是连通的（`XDG_RUNTIME_DIR` 里有 socket，`adw::init()` 成功），但窗口从来没画出来时，助手退出码是 1。守护进程把 1 当成“用户说还没翻”，于是不再尝试 zenity/kdialog，作业一直等着，日志里什么都没有。
+
+根因（本机实测那条路径）：`run_flip_dialog` 的返回值初值就是 `EXIT_DECLINE`(1)，`app.run_with_args` 在没收到任何 response 时也照样返回。这条路径上 `activate` 跑了、`map` 信号发了、只 tick 了一帧，约 300 ms 后主循环自己结束，`response` 和 `closed` 一个都没发。
+
+修法：只有收到对话框的 response 才算“有人看到过它”，否则返回 2（`EXIT_NO_DISPLAY`，和“打不开显示”同一个码，守护进程因此继续试下一个候选）。测试钩子（`IPP_DUPLEXD_FORK_GUI_TEST`）是直接调回调、不发 response，所以保留它自己的答案。
+
+验证：本机（无合成器、`XDG_RUNTIME_DIR` 活着）`--flip` 从 1 变 2；`XDG_RUNTIME_DIR=/tmp/empty` 与 `GDK_BACKEND=x11 DISPLAY=:44` 仍是 2；`cargo test --features gui` 本机全绿（51+12+3+14+9），`gui_dialog_continues_job` 的 zenity 回退照常；CI 的 GTK4 dialog job 里 xvfb 下 accept/decline 仍是 0/1。
+
+顺带：为了在这台没有 gtk4-devel 的机器上本地跑 `--features gui`，把 Fedora 的 `gtk4-devel`/`libadwaita-devel` 依赖链下下来解到 `/tmp/sysroot`，用 `PKG_CONFIG_SYSROOT_DIR` + 补 `lib*.so` 软链来编译链接；这只是临时环境，仓库里没有因此改动构建方式。
+
 
