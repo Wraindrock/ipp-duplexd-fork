@@ -480,7 +480,7 @@ fn start_setup(state: &Rc<State>) {
         // A toast cannot hold `systemctl status` and a journal, and it cannot be
         // copied; the window this is reported to is the diagnostics dialog.
         let title = l10n::text(locale, "gui.window.not_answering_title");
-        let body = diagnostics_text(state);
+        let body = ipp_duplexd_fork::diagnostics::text(&state.config.borrow().printers, locale);
         show_text(state, &title, &body);
     }
     idle_rebuild(state);
@@ -536,101 +536,6 @@ fn wait_for_daemon(state: &Rc<State>, locale: &str) -> bool {
     false
 }
 
-/// Everything needed to answer "why is it not printing", in one selectable
-/// block: what the unit runs, what systemd thinks of it, the service journal,
-/// and whether each port answers.
-fn diagnostics_text(state: &Rc<State>) -> String {
-    let locale = state.locale.get();
-    let mut out = String::new();
-    out.push_str(&format!("{} {}\n", gui::NAME, env!("CARGO_PKG_VERSION")));
-    if let Some(image) = service::running_image() {
-        out.push_str(&format!("AppImage: {}\n", image.display()));
-        out.push_str(&format!(
-            "installed copy: {}\n",
-            service::installed_image().display()
-        ));
-    }
-    let unit = service::packaged_unit().unwrap_or_else(service::user_unit_path);
-    out.push_str(&format!("unit: {}\n", unit.display()));
-    match std::fs::read_to_string(&unit) {
-        Ok(text) => {
-            for line in text.lines().filter(|line| {
-                line.starts_with("ExecStart=") || line.starts_with("EnvironmentFile=")
-            }) {
-                out.push_str(line);
-                out.push('\n');
-            }
-        }
-        Err(e) => out.push_str(&format!("unit file: {e}\n")),
-    }
-    out.push_str("\n\n--- systemctl --user status ---\n");
-    out.push_str(&service::status_text());
-    out.push_str("\n\n--- journal ---\n");
-    out.push_str(&service::journal_text(80));
-    out.push_str("\n\n--- virtual printers ---\n");
-    let printers: Vec<(String, String, String)> = state
-        .config
-        .borrow()
-        .printers
-        .iter()
-        .map(|printer| {
-            (
-                printer.name.clone(),
-                printer.listen.clone(),
-                printer.real.clone(),
-            )
-        })
-        .collect();
-    // "is it installed" (a missing dependency) and "is it serving the device"
-    // (the hplip conflict) are different questions with different answers.
-    let ipp_usb_installed = usb::installed();
-    let ipp_usb_serving = usb::serving();
-    let known_queues = discover::cups_printers().unwrap_or_default();
-    for (name, listen, real) in printers {
-        let line = match gui::http_get(&listen, "/", locale) {
-            Ok(_) => l10n::tr(
-                locale,
-                "gui.window.diag_answers",
-                &[("listen", listen.clone())],
-            ),
-            Err(e) => l10n::tr(
-                locale,
-                "gui.window.unreachable",
-                &[("addr", listen.clone()), ("err", e)],
-            ),
-        };
-        out.push_str(&format!("{name}: {line}\n"));
-        // A queue hplip drives cannot print while ipp-usb holds the device;
-        // the port above answers, so this is the only line that explains it.
-        if let Some(conflict) = hplip::conflict_for(&real, &known_queues, ipp_usb_serving) {
-            out.push_str(&format!(
-                "  {}\n",
-                l10n::tr(
-                    locale,
-                    "gui.window.hplip_hint",
-                    &[("queue", conflict.queue)]
-                )
-            ));
-        }
-        // A USB printer is only an IPP printer through ipp-usb; say so here,
-        // next to the port probe that is already asking why nothing answers.
-        if let Some(uri) = usb::missing([real.as_str()], ipp_usb_installed) {
-            out.push_str(&format!(
-                "  {}\n",
-                l10n::tr(
-                    locale,
-                    "common.ipp_usb_missing",
-                    &[("uri", uri.to_string())]
-                )
-            ));
-        }
-    }
-    out
-}
-
-/// A dialog for text a person may need to read twice, select and paste
-/// somewhere else: wrapped, scrollable, selectable, with a Copy button. Toasts
-/// are for "saved", not for a journal.
 /// A window for text a person may read twice, select and paste somewhere else.
 ///
 /// A window, not an `AdwAlertDialog`: this is several screens of monospace text
@@ -723,7 +628,10 @@ fn diagnostics_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Pref
     {
         let state = state.clone();
         open.connect_clicked(move |_| {
-            let body = diagnostics_text(&state);
+            let body = ipp_duplexd_fork::diagnostics::text(
+                &state.config.borrow().printers,
+                state.locale.get(),
+            );
             let locale = state.locale.get();
             let title = l10n::text(locale, "gui.window.diagnostics_title");
             show_text(&state, &title, &body);

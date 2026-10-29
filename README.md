@@ -209,17 +209,19 @@ After installing (or `cargo build --release`), run:
 ipp-duplexd-fork-setup
 ```
 
-It walks through the whole setup interactively: pick the real printer
-from your CUPS queues (or enter an `ipp://` URI, which is probed),
-optionally tweak the flip dialog / rotation / blank-page options, write
-`~/.config/ipp-duplexd-fork.conf`, enable and start the systemd user service
-(writing a user unit if the packaged one is absent), and register the
-virtual printer as a driverless CUPS queue. Every answer has a sensible
-default; `--yes` runs non-interactively, `--no-service` / `--no-queue`
-skip steps, and `--printer URI` / `--queue NAME` / `--listen ADDR`
-preseed answers. `--lang CODE` runs the wizard in that language and
-remembers it (`--lang CODE` is written into the config file, so the
-service speaks it too). See `ipp-duplexd-fork-setup --help`.
+It opens the terminal menu: **virtual printers** (add, edit, remove, print
+the backs, look at a status page, switch a queue between hplip and IPP),
+**jobs** (list and cancel), **service** (install, uninstall, restart),
+**logs and status**, and **settings** — the same tree the window shows, and
+it writes the same `~/.config/ipp-duplexd-fork/config.toml`, so the two
+front ends cannot drift apart. Every question has a sensible default.
+
+For scripts, `--printer URI` configures one printer without asking
+(defaults everywhere else); `--yes` takes every default, `--no-service` /
+`--no-queue` skip the service and the CUPS queue, `--listen ADDR` picks the
+address, and `--lang CODE` runs in that language and remembers it in the
+config file, so the service speaks it too. See
+`ipp-duplexd-fork-setup --help`.
 
 The same first run can be done from the desktop window (`ipp-duplexd-fork-gui`
 with no arguments), which is the point of the "This computer" row: adding the
@@ -228,8 +230,8 @@ none — writing the unit, creating the `~/.config/ipp-duplexd-fork.conf` the un
 names, and enabling it for every login — then waits until the daemon answers and
 registers the CUPS queue. A machine whose service is installed but stopped gets
 the same treatment (install is idempotent, and ends with a restart). The terminal
-wizard is still there for machines without a desktop; both front ends write the
-same files.
+front end is for machines without a desktop; both write the same
+`config.toml` and offer the same operations.
 
 To do the same by hand instead:
 

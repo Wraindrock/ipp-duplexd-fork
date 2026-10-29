@@ -299,78 +299,38 @@ gui.window.field_gui: "打印背面前询问"
 gui.window.field_gui_hint: "弹出翻纸对话框，而不是等 GET /flip"
 
 # ---------------------------------------------------------------- 安装向导
+tui.menu.title: "要做什么？"
+tui.menu.printers: "1) 虚拟打印机"
+tui.menu.jobs: "2) 作业"
+tui.menu.service: "3) 服务"
+tui.menu.diagnostics: "4) 日志与状态"
+tui.menu.settings: "5) 设置"
+tui.menu.quit: "q) 退出"
+tui.prompt: "选择"
+tui.invalid: "没有这个选项"
+tui.bye: "再见"
+tui.printers.actions: "a) 添加  e) 编辑  d) 删除  f) 打印背面  s) 状态  r) 切换驱动  g) 重新注册队列  b) 返回"
+tui.printers.which: "哪一台（编号）"
+tui.jobs.actions: "c) 取消作业  r) 刷新  b) 返回"
+tui.jobs.printer: "打印机名称"
+tui.jobs.id: "作业编号"
+tui.service.actions: "i) 安装/启动  u) 卸载  r) 重启  b) 返回"
+tui.settings.actions: "l) 语言  b) 返回"
+tui.driver.none: "这台打印机不走 hplip，没有可切换的驱动"
+
 setup.usage: |
-  ipp-duplexd-fork-setup —— 配置手动双面虚拟打印机
+  用法：ipp-duplexd-fork-setup [选项]
 
-  依次完成：选择真实打印机、写入 ~/.config/ipp-duplexd-fork.conf、
-  启用 ipp-duplexd-fork 的 systemd 用户服务、把虚拟打印机添加为
-  CUPS 的无驱动队列。
+    不带选项时进入终端菜单：虚拟打印机、作业、服务、日志与状态、设置——
+    和窗口里的操作树一致，写的是同一个配置文件。
 
-  选项（全部可选；没给的会交互询问）：
-    --printer URI     真实打印机，例如 ipp://127.0.0.1:631/printers/laser
-    --queue NAME      虚拟打印机在 CUPS 里的队列名
-    --listen ADDR     ipp-duplexd-fork 的监听地址（默认 127.0.0.1:6632）
-    --lang CODE       消息语言（en、zh-CN）
-    --no-service      跳过 systemd 服务这一步
-    --no-queue        跳过 CUPS 队列这一步
-    --yes             不再提问，未给出的选项用默认值
-    -h, --help        显示本帮助
+    --printer URI    不提问，直接配置一台打印机（配合 --yes）
+    --listen ADDR    这台打印机监听的地址
+    --no-service     不安装、不启动服务
+    --no-queue       不注册 CUPS 队列
+    --yes            全部取默认值，什么都不问
+    --lang CODE      消息语言（en、zh-CN；默认取自环境）
 setup.err.unknown_option: "无法识别的选项 '%{arg}'"
 setup.err.bad_lang: "不支持的语言 '%{lang}'；可用语言：%{list}"
-setup.err.no_qpdf: "！没有安装 qpdf——ipp-duplexd-fork 需要它来拆分页面。"
-setup.err.no_qpdf_hint: "  请先安装（例如 'sudo pacman -S qpdf' 或 'sudo apt install qpdf'）。"
-setup.err.continue_anyway: "仍要继续吗？"
-setup.err.no_daemon: "！找不到 'ipp-duplexd-fork' 可执行文件（不在 PATH 里，也不在本工具旁边）。"
-setup.err.no_daemon_hint: "  请先安装软件包，或运行 'cargo build --release'。"
-setup.title: "ipp-duplexd-fork 配置——手动双面虚拟打印机"
-setup.step.printer: "第 1 步：ipp-duplexd-fork 要转发到的真实打印机"
-setup.printer.found: "  找到：%{model}"
-setup.printer.bad_uri: "！'%{uri}' 不能当作打印机 URI：%{err}"
-setup.printer.no_answer: "！%{uri} 上没有 IPP 打印机应答"
-setup.printer.no_answer_hint: "  （如果它只是现在关着机，那也没关系）"
-setup.printer.use_anyway: "仍然使用它吗？"
-setup.step.config: "第 2 步：ipp-duplexd-fork 配置（~/.config/ipp-duplexd-fork.conf）"
+setup.err.no_printer: "没找到打印机：接一台，或者用 --printer 指定"
 setup.ask.advanced: "要改高级选项吗（翻纸对话框、旋转、空白页）？"
-setup.ask.gui: "该翻纸时弹出桌面对话框吗？（否则用 curl /flip）"
-setup.ask.rotate: "把偶数页（背面）旋转 180 度吗？"
-setup.ask.blank: "页数为奇数时空白页补在哪里（leading/trailing/none）"
-setup.step.service: "第 3 步：把 ipp-duplexd-fork 作为服务运行"
-setup.service.no_systemd: "  找不到 systemd——请手动启动 ipp-duplexd-fork："
-setup.service.skipped: "  已跳过（--no-service）"
-setup.service.waiting: "  正在等待 %{listen} 上的 ipp-duplexd-fork "
-setup.service.up: "  虚拟打印机已就绪：%{model}"
-setup.service.down: "！%{listen} 上的 ipp-duplexd-fork 没有响应——请检查：journalctl --user -u ipp-duplexd-fork"
-setup.step.queue: "第 4 步：把虚拟打印机加入 CUPS"
-setup.queue.name: "CUPS 队列名称"
-setup.queue.no_lpadmin: "  找不到 lpadmin（CUPS）——请在一台要打印的机器上执行："
-setup.queue.skipped: "  已跳过（--no-queue）"
-setup.done: "配置完成。打印到新队列即可；奇数页打完后翻纸，并在对话框里确认（或执行 curl http://127.0.0.1:%{port}/flip）。"
-setup.done.status: "状态页：http://127.0.0.1:%{port}/"
-setup.choose.no_queues: "  没有找到 CUPS 队列；请直接填写打印机的 IPP 地址。"
-setup.choose.real_uri: "真实打印机 URI"
-setup.choose.recommend: "  推荐走本机 CUPS 队列：驱动转换仍由 CUPS 负责，只支持 TLS 的打印机也能用。"
-setup.choose.or_uri: "    或直接填写 ipp:// 地址"
-setup.choose.real_printer: "真实打印机"
-setup.choose.bad_input: "  请输入 1-%{n} 之间的编号，或一个 ipp:// 地址"
-setup.config.up_to_date: "  %{path} 已是最新"
-setup.config.exists: "  %{path} 已存在："
-setup.config.overwrite: "要覆盖它吗？"
-setup.config.keeping: "  保留现有配置"
-setup.config.wrote: "  已写入 %{path}：%{line}"
-setup.config.cannot_write: "！无法写入 %{path}：%{err}"
-setup.service.installed: "  已安装 %{path}"
-setup.service.cannot_write: "！无法写入 %{path}：%{err}"
-setup.service.no_display: "！当前桌面会话没有把显示相关变量传给 systemd"
-setup.service.no_display_hint: "  在能访问你的显示之前，翻纸对话框不会弹出来。"
-setup.service.no_display_conf: "  请把它们写进 ~/.config/environment.d/ipp-duplexd-fork.conf："
-setup.service.enable_failed: "！systemctl --user enable --now ipp-duplexd-fork 失败：%{err}"
-setup.service.start_manually: "  可以手动启动它：%{bin} <~/.config/ipp-duplexd-fork.conf 里的参数>"
-setup.service.enabled: "  服务 ipp-duplexd-fork 已启用并启动（日志见 journalctl --user -u ipp-duplexd-fork）"
-setup.queue.already: "  CUPS 队列 '%{queue}' 已经指向 ipp-duplexd-fork"
-setup.queue.exists: "  CUPS 队列 '%{queue}' 已存在，但设备地址不同（%{uri}）"
-setup.queue.repoint: "要把它改为指向 ipp-duplexd-fork 吗？"
-setup.queue.added: "  已添加 CUPS 队列 '%{queue}' -> %{uri}"
-setup.queue.test: "  可以这样测试：lp -d %{queue} 某个文件.pdf"
-setup.queue.lpadmin_failed: "！lpadmin 失败：%{err}"
-setup.queue.need_admin: "  可能需要管理员权限，试试："
-setup.probe.unnamed: "（未命名的 IPP 打印机）"
