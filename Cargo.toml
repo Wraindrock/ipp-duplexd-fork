@@ -1,6 +1,6 @@
 [package]
 name = "ipp-duplexd-fork"
-version = "2026.10.29-18"
+version = "2026.10.29-19"
 edition = "2021"
 authors = ["Sami Kalliomäki <sami@kalliomaki.me>"]
 description = "Loopback IPP printer that performs manual duplex on a real IPP printer"
