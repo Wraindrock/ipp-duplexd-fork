@@ -38,6 +38,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
+use std::sync::mpsc;
 use std::time::Duration;
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -824,22 +825,19 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             1
         });
 
-        if let Some(queue) = stuck.clone() {
-            let fix = icon_button("dialog-warning-symbolic", &labels.ipp_usb_tooltip);
-            fix.add_css_class("warning");
-            {
-                let state = state.clone();
-                fix.connect_clicked(move |_| confirm_ipp_usb_fix(&state, &queue));
+        if let Some((queue, device)) = hplip::queue_and_device(real, &known_queues) {
+            if usb::installed() {
+                // Always leave a way back to the driverless path: starting
+                // ipp-usb first when it is not answering.
+                let recover =
+                    icon_button("emblem-synchronizing-symbolic", &labels.ipp_recover_tooltip);
+                {
+                    let state = state.clone();
+                    recover
+                        .connect_clicked(move |_| confirm_recover_to_ipp(&state, &queue, &device));
+                }
+                row.add_suffix(&recover);
             }
-            row.add_suffix(&fix);
-        } else if let Some(conflict) = conflict.clone() {
-            let fix = icon_button("dialog-warning-symbolic", &labels.hplip_tooltip);
-            fix.add_css_class("warning");
-            {
-                let state = state.clone();
-                fix.connect_clicked(move |_| confirm_hplip_switch(&state, &conflict));
-            }
-            row.add_suffix(&fix);
         }
 
         let flip_button = icon_button("media-playback-start-symbolic", &labels.flip_tooltip);
@@ -1001,30 +999,44 @@ fn driver_label(locale: &str, driver: hplip::Driver) -> String {
     }
 }
 
-/// ipp-usb is running but nothing answers: neither path can print. Offer the two
-/// ways out, both of which need the user's authorisation through polkit.
-fn confirm_ipp_usb_fix(state: &Rc<State>, queue: &str) {
+/// Ask before pointing a hplip queue at ipp-usb again: the driverless path is
+/// what this program is built around, but it needs ipp-usb to answer first, and
+/// getting there may need the user's authorisation.
+fn confirm_recover_to_ipp(state: &Rc<State>, queue: &str, device_uri: &str) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);
     let dialog = adw::AlertDialog::builder()
-        .heading(&labels.ipp_usb_title)
-        .body(l10n::tr(
+        .heading(l10n::tr(
             locale,
-            "gui.window.ipp_usb_body",
+            "gui.window.ipp_recover_title",
             &[("queue", queue.to_string())],
         ))
+        .body(l10n::text(locale, "gui.window.ipp_recover_body"))
         .build();
     dialog.add_response("cancel", &labels.cancel);
-    dialog.add_response("restart", &labels.ipp_usb_restart);
-    dialog.add_response("stop", &labels.ipp_usb_stop);
-    dialog.set_response_appearance("restart", adw::ResponseAppearance::Suggested);
+    dialog.add_response("go", &labels.ipp_recover_action);
+    dialog.set_response_appearance("go", adw::ResponseAppearance::Suggested);
     dialog.set_close_response("cancel");
     {
         let state = state.clone();
-        dialog.connect_response(None, move |_, response| match response {
-            "restart" => run_ipp_usb(&state, &["systemctl", "restart", "ipp-usb"]),
-            "stop" => run_ipp_usb(&state, &["systemctl", "stop", "ipp-usb"]),
-            _ => {}
+        let conflict = hplip::Conflict {
+            queue: queue.to_string(),
+            device_uri: device_uri.to_string(),
+        };
+        dialog.connect_response(None, move |_, response| {
+            if response != "go" {
+                return;
+            }
+            if usb::serving() {
+                switch_queue_to_ipp_usb(&state, &conflict);
+            } else {
+                // Not answering: start it, then switch once it does.
+                run_ipp_usb(
+                    &state,
+                    &["systemctl", "restart", "ipp-usb"],
+                    Some(conflict.clone()),
+                );
+            }
         });
     }
     dialog.present(Some(&state.window));
@@ -1032,7 +1044,7 @@ fn confirm_ipp_usb_fix(state: &Rc<State>, queue: &str) {
 
 /// Run a privileged command through `pkexec` and watch for it to finish, so the
 /// window does not freeze while the authorisation dialog is up.
-fn run_ipp_usb(state: &Rc<State>, command: &[&str]) {
+fn run_ipp_usb(state: &Rc<State>, command: &[&str], follow_up: Option<hplip::Conflict>) {
     let locale = state.locale.get();
     let action = command.join(" ");
     let mut child = match Command::new("pkexec").args(command).spawn() {
@@ -1050,6 +1062,7 @@ fn run_ipp_usb(state: &Rc<State>, command: &[&str]) {
         }
     };
     let state = state.clone();
+    let follow_up = std::cell::RefCell::new(follow_up);
     glib::timeout_add_local(Duration::from_millis(300), move || match child.try_wait() {
         Ok(Some(status)) => {
             let locale = state.locale.get();
@@ -1063,48 +1076,23 @@ fn run_ipp_usb(state: &Rc<State>, command: &[&str]) {
                     ),
                 );
             } else if usb::serving() {
-                toast(&state, &l10n::text(locale, "gui.window.ipp_usb_serving"));
+                match follow_up.borrow_mut().take() {
+                    // The service answers again: finish the job it was for.
+                    Some(conflict) => switch_queue_to_ipp_usb(&state, &conflict),
+                    None => {
+                        toast(&state, &l10n::text(locale, "gui.window.ipp_usb_serving"));
+                        rebuild(&state);
+                    }
+                }
             } else {
                 toast(&state, &l10n::text(locale, "gui.window.ipp_usb_stopped"));
+                rebuild(&state);
             }
-            rebuild(&state);
             glib::ControlFlow::Break
         }
         Ok(None) => glib::ControlFlow::Continue,
         Err(_) => glib::ControlFlow::Break,
     });
-}
-
-/// Offer to point a hplip queue at ipp-usb. Nothing is uninstalled: the old
-/// device URI and PPD are saved under the program's data directory first.
-fn confirm_hplip_switch(state: &Rc<State>, conflict: &hplip::Conflict) {
-    let locale = state.locale.get();
-    let labels = gui::window_labels(locale);
-    let dialog = adw::AlertDialog::builder()
-        .heading(l10n::tr(
-            locale,
-            "gui.window.hplip_title",
-            &[("queue", conflict.queue.clone())],
-        ))
-        .body(l10n::tr(
-            locale,
-            "gui.window.hplip_body",
-            &[("queue", conflict.queue.clone())],
-        ))
-        .build();
-    dialog.add_response("cancel", &labels.cancel);
-    dialog.add_response("switch", &labels.hplip_switch);
-    dialog.set_response_appearance("switch", adw::ResponseAppearance::Suggested);
-    {
-        let state = state.clone();
-        let conflict = conflict.clone();
-        dialog.connect_response(None, move |_, response| {
-            if response == "switch" {
-                switch_queue_to_ipp_usb(&state, &conflict);
-            }
-        });
-    }
-    dialog.present(Some(&state.window));
 }
 
 fn switch_queue_to_ipp_usb(state: &Rc<State>, conflict: &hplip::Conflict) {
@@ -1430,22 +1418,74 @@ fn restart_service(state: &Rc<State>) {
 /// does not answer is skipped: `lpadmin -m everywhere` has to ask it.
 fn register_queues(state: &Rc<State>) {
     let locale = state.locale.get();
-    let printers = gui::queues_to_register(&state.config.borrow().printers, |addr| {
-        gui::http_get(addr, "/", locale).is_ok()
+    let printers: Vec<(String, String)> =
+        gui::queues_to_register(&state.config.borrow().printers, |addr| {
+            gui::http_get(addr, "/", locale).is_ok()
+        })
+        .into_iter()
+        .map(|printer| (printer.name, printer.listen))
+        .collect();
+    if printers.is_empty() {
+        return;
+    }
+    // `lpadmin -m everywhere` asks the daemon for attributes and can take a
+    // second per printer; do it off the UI thread and say that work is running.
+    let busy = busy_dialog(state, &l10n::text(locale, "gui.window.queue_busy"));
+    let (send, receive) = mpsc::channel();
+    std::thread::spawn(move || {
+        let failures: Vec<(String, String)> = printers
+            .into_iter()
+            .filter_map(|(name, listen)| queues::ensure(&name, &listen).err().map(|e| (name, e)))
+            .collect();
+        let _ = send.send(failures);
     });
-    let mut failures = Vec::new();
-    for printer in printers {
-        if let Err(e) = queues::ensure(&printer.name, &printer.listen) {
-            failures.push(l10n::tr(
-                locale,
-                "gui.window.queue_failed",
-                &[("name", printer.name.clone()), ("err", e)],
-            ));
+    let state = state.clone();
+    glib::timeout_add_local(Duration::from_millis(120), move || {
+        match receive.try_recv() {
+            Ok(failures) => {
+                busy.close();
+                let locale = state.locale.get();
+                if failures.is_empty() {
+                    toast(&state, &l10n::text(locale, "gui.window.queue_registered"));
+                } else {
+                    let text = failures
+                        .into_iter()
+                        .map(|(name, err)| {
+                            l10n::tr(
+                                locale,
+                                "gui.window.queue_failed",
+                                &[("name", name), ("err", err)],
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    toast(&state, &text);
+                }
+                rebuild(&state);
+                glib::ControlFlow::Break
+            }
+            Err(mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                busy.close();
+                glib::ControlFlow::Break
+            }
         }
-    }
-    if !failures.is_empty() {
-        toast(state, &failures.join("; "));
-    }
+    });
+}
+
+/// A modal "this is running" window with a spinner; the caller closes it.
+fn busy_dialog(state: &Rc<State>, message: &str) -> adw::AlertDialog {
+    let spinner = gtk::Spinner::new();
+    spinner.set_size_request(28, 28);
+    spinner.set_margin_top(12);
+    spinner.set_margin_bottom(12);
+    spinner.start();
+    let dialog = adw::AlertDialog::builder()
+        .heading(message)
+        .extra_child(&spinner)
+        .build();
+    dialog.present(Some(&state.window));
+    dialog
 }
 
 fn set_language(state: &Rc<State>, code: &'static str) {

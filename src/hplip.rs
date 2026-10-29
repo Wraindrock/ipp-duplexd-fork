@@ -102,6 +102,18 @@ pub fn stuck(
     is_hplip_usb(device_uri).then_some(queue)
 }
 
+/// The local queue behind a printer's `real` address, and what it drives, when
+/// that is a hplip USB queue — the case where a driverless switch is possible.
+pub fn queue_and_device(real: &str, queues: &[Discovered]) -> Option<(String, String)> {
+    let queue = queue_of_real(real)?;
+    let device_uri = queues
+        .iter()
+        .find(|known| known.queue == queue)?
+        .device_uri
+        .as_deref()?;
+    is_hplip_usb(device_uri).then(|| (queue, device_uri.to_string()))
+}
+
 /// How the real printer is driven right now, for the row label.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Driver {
