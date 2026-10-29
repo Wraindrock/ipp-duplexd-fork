@@ -545,6 +545,10 @@ fn service_menu() {
             l10n::text(lang(), "gui.window.service_not_installed")
         };
         println!("  {state}");
+        let stale = service::stale_image().is_some();
+        if stale {
+            println!("  {}", t!("gui.window.service_stale_title"));
+        }
         println!("  {}", t!("tui.service.actions"));
         match ask(&t!("tui.prompt"), "").as_str() {
             "i" => {
@@ -560,6 +564,13 @@ fn service_menu() {
                     }
                 }
             }
+            "v" if stale => match service::refresh_image().and_then(|()| service::restart()) {
+                Ok(()) => println!("{}", t!("gui.window.service_stale_done")),
+                Err(e) => println!(
+                    "{}",
+                    l10n::tr(lang(), "gui.window.service_stale_failed", &[("err", e)])
+                ),
+            },
             "r" => match service::restart() {
                 Ok(()) => println!("{}", t!("gui.window.restarted")),
                 Err(e) => println!("{}", t!("gui.window.restart_failed", err = e)),

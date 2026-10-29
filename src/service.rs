@@ -364,6 +364,35 @@ fn tool_text(program: &str, args: &[&str]) -> String {
 /// unit names exists, and have systemd start the service now and at every
 /// login. Idempotent: everything it writes is compared with what is there
 /// first, so a second call from the window changes nothing.
+/// The window's image and the copy the unit runs, when they are not the same
+/// file: the desktop shortcut updates one, and the unit keeps running the other
+/// until someone copies it over. Returns `(running, installed)`.
+pub fn stale_image() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let running = running_image()?;
+    let installed = installed_image();
+    let size = |path: &std::path::Path| std::fs::metadata(path).ok().map(|m| m.len());
+    match (size(&running), size(&installed)) {
+        (Some(a), Some(b)) if a != b => Some((running, installed)),
+        _ => None,
+    }
+}
+
+/// Copy the running image over the installed one, so the unit starts the
+/// version the user just installed.
+pub fn refresh_image() -> Result<(), String> {
+    let (running, installed) = stale_image().ok_or("nothing to update")?;
+    if let Some(dir) = installed.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::copy(&running, &installed).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&installed, std::fs::Permissions::from_mode(0o755));
+    }
+    Ok(())
+}
+
 pub fn install(gui: bool) -> Result<Install, String> {
     let user_unit = user_unit_path();
     let mut wrote_unit = false;
