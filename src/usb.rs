@@ -141,6 +141,40 @@ pub fn service_active() -> bool {
         .unwrap_or(false)
 }
 
+/// Overrides the USB sysfs root; tests use a temporary directory.
+pub const SYSFS_ENV: &str = "IPP_DUPLEXD_FORK_SYSFS_USB";
+
+/// Is a USB device with this serial plugged into this machine?
+///
+/// `None` when the answer is not knowable (no sysfs, no serial), so a caller
+/// never claims "unplugged" on a guess. A printer that is passed through to a
+/// virtual machine is gone from the host's sysfs, which is exactly the case
+/// where a hplip queue stops working for no visible reason.
+pub fn attached(serial: &str) -> Option<bool> {
+    let root = std::env::var_os(SYSFS_ENV)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/sys/bus/usb/devices"));
+    let entries = std::fs::read_dir(&root).ok()?;
+    let mut seen = false;
+    for entry in entries.flatten() {
+        let path = entry.path().join("serial");
+        let Ok(serial_of_device) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        seen = true;
+        if serial_of_device.trim() == serial {
+            return Some(true);
+        }
+    }
+    // No device in sysfs exposes a serial at all: we cannot tell whether ours
+    // is missing or simply not reporting one.
+    if seen {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// The first printer that cannot print because `ipp-usb` is missing.
 ///
 /// `uris` are the configured `real` addresses and `installed` is passed in (not
@@ -246,5 +280,26 @@ mod tests {
         let closed_port = closed.local_addr().unwrap().port();
         drop(closed);
         assert!(!serving_at("127.0.0.1", closed_port));
+    }
+    #[test]
+    fn a_serial_is_looked_for_in_sysfs() {
+        let dir = std::env::temp_dir().join(format!("ipp-usb-sysfs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("1-1")).unwrap();
+        std::fs::write(dir.join("1-1/serial"), "CN8BE790YY06MD\n").unwrap();
+        std::env::set_var(SYSFS_ENV, &dir);
+        assert_eq!(attached("CN8BE790YY06MD"), Some(true));
+        assert_eq!(attached("SOMETHING-ELSE"), Some(false));
+        std::env::remove_var(SYSFS_ENV);
+        let _ = std::fs::remove_dir_all(&dir);
+        // a directory with no serials at all is "cannot tell", not "absent"
+        let empty =
+            std::env::temp_dir().join(format!("ipp-usb-sysfs-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).unwrap();
+        std::env::set_var(SYSFS_ENV, &empty);
+        assert_eq!(attached("CN8BE790YY06MD"), None);
+        std::env::remove_var(SYSFS_ENV);
+        let _ = std::fs::remove_dir_all(&empty);
     }
 }

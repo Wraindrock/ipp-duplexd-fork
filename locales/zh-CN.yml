@@ -274,6 +274,7 @@ gui.window.ipp_usb_serving: "ipp-usb 恢复应答了——现在可以把队列�
 gui.window.ipp_usb_stopped: "ipp-usb 已停止，打印改走 hplip"
 gui.window.ipp_usb_failed: "执行 %{action} 失败：%{err}"
 gui.window.ipp_usb_still_down: "ipp-usb 重启了，但端口仍无应答——把打印机拔插一次，再试一遍"
+gui.window.usb_absent: "这台机器上没有接这台打印机（USB 可能切给另一台了）"
 gui.window.ipp_recover_tooltip: "把这条队列切回 IPP（driverless）"
 gui.window.ipp_recover_title: "把 %{queue} 切回 IPP 直连？"
 gui.window.ipp_recover_body: "driverless 需要 ipp-usb 在端口上应答。它没在运行时，窗口会先把它启动起来（systemd 会要求授权），然后把队列指过去。旧的设备 URI 和 PPD 会留着，随时可以还原。"

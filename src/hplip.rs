@@ -116,6 +116,13 @@ pub fn queue_and_device(real: &str, queues: &[Discovered]) -> Option<(String, St
     is_hplip_usb(device_uri).then(|| (queue, device_uri.to_string()))
 }
 
+/// The `serial=` parameter of a hplip device URI, when it has one.
+pub fn serial_of(device_uri: &str) -> Option<&str> {
+    let (_, rest) = device_uri.split_once("serial=")?;
+    let serial = rest.split('&').next()?.trim();
+    (!serial.is_empty()).then_some(serial)
+}
+
 /// How the real printer is driven right now, for the row label.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Driver {
@@ -253,5 +260,18 @@ mod tests {
         assert_eq!(of("b"), Some(Driver::Ipp));
         assert_eq!(of("c"), None);
         assert_eq!(of("missing"), None);
+    }
+    #[test]
+    fn the_serial_comes_out_of_the_device_uri() {
+        assert_eq!(
+            serial_of("hp:/usb/DeskJet_2600_series?serial=CN8BE790YY06MD"),
+            Some("CN8BE790YY06MD")
+        );
+        assert_eq!(
+            serial_of("hp:/usb/DeskJet_2600_series?serial=A&x=1"),
+            Some("A")
+        );
+        assert_eq!(serial_of("hp:/usb/Printer"), None);
+        assert_eq!(serial_of("ipp://localhost:60000/ipp/print"), None);
     }
 }
