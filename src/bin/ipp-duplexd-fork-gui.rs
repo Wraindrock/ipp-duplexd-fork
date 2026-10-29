@@ -566,7 +566,10 @@ fn diagnostics_text(state: &Rc<State>) -> String {
             )
         })
         .collect();
-    let ipp_usb = usb::installed();
+    // "is it installed" (a missing dependency) and "is it serving the device"
+    // (the hplip conflict) are different questions with different answers.
+    let ipp_usb_installed = usb::installed();
+    let ipp_usb_serving = usb::serving();
     let known_queues = discover::cups_printers().unwrap_or_default();
     for (name, listen, real) in printers {
         let line = match gui::http_get(&listen, "/", locale) {
@@ -584,7 +587,7 @@ fn diagnostics_text(state: &Rc<State>) -> String {
         out.push_str(&format!("{name}: {line}\n"));
         // A queue hplip drives cannot print while ipp-usb holds the device;
         // the port above answers, so this is the only line that explains it.
-        if let Some(conflict) = hplip::conflict_for(&real, &known_queues, ipp_usb) {
+        if let Some(conflict) = hplip::conflict_for(&real, &known_queues, ipp_usb_serving) {
             out.push_str(&format!(
                 "  {}\n",
                 l10n::tr(
@@ -596,7 +599,7 @@ fn diagnostics_text(state: &Rc<State>) -> String {
         }
         // A USB printer is only an IPP printer through ipp-usb; say so here,
         // next to the port probe that is already asking why nothing answers.
-        if let Some(uri) = usb::missing([real.as_str()], ipp_usb) {
+        if let Some(uri) = usb::missing([real.as_str()], ipp_usb_installed) {
             out.push_str(&format!(
                 "  {}\n",
                 l10n::tr(
@@ -704,7 +707,7 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
     // the same USB device. Those queues can never print; the row offers to move
     // them to ipp-usb instead (hplip stays installed).
     let known_queues = discover::cups_printers().unwrap_or_default();
-    let ipp_usb = usb::installed();
+    let ipp_usb = usb::serving();
 
     let printers: Vec<(String, String, String)> = state
         .config

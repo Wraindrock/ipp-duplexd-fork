@@ -12,6 +12,7 @@
 
 use std::ffi::OsStr;
 use std::path::Path;
+use std::time::Duration;
 
 /// The port `ipp-usb` serves IPP on.
 pub const PORT: u16 = 60000;
@@ -92,6 +93,25 @@ fn is_executable(path: &Path) -> bool {
     {
         path.is_file()
     }
+}
+
+/// Is `ipp-usb` actually serving IPP on its port right now?
+///
+/// Being on `PATH` only says the package is installed. Whether it holds the
+/// printer is a different question: when nothing answers on [`PORT`], hplip owns
+/// the device and printing through it is fine, so there is no conflict to
+/// report — and pointing a queue at this port would only break it.
+pub fn serving() -> bool {
+    serving_at("127.0.0.1", PORT)
+}
+
+/// [`serving`] for any host and port, so tests can stand up a listener.
+pub fn serving_at(host: &str, port: u16) -> bool {
+    use std::net::{TcpStream, ToSocketAddrs};
+    let Ok(mut addresses) = (host, port).to_socket_addrs() else {
+        return false;
+    };
+    addresses.any(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok())
 }
 
 /// The first printer that cannot print because `ipp-usb` is missing.
@@ -186,5 +206,18 @@ mod tests {
         assert!(installed_in(Some(&two)));
         assert!(!installed_in(None));
         let _ = fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn serving_needs_something_on_the_port() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(serving_at("127.0.0.1", port));
+        drop(listener);
+        // the port is free now, but another process may grab it: use a fresh
+        // listener to know exactly which port is closed
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let closed_port = closed.local_addr().unwrap().port();
+        drop(closed);
+        assert!(!serving_at("127.0.0.1", closed_port));
     }
 }
