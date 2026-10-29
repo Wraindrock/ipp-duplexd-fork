@@ -280,11 +280,11 @@ lp -o PageSize=ISOB5 → [attrs] PageSize = ISOB5   (没有 media)
 
 ## 现状（2026-10-29 收尾）
 
-- 最新发布：`v2026.10.29-7`（AppImage、deb、rpm、Arch 包；dnf 仓库每次发版自动重建）
-- 已关闭：#1、#2、#3、#4、#5（提案，驳回）、#8、#11
-- 唯一开着的：**#14** —— ipp-usb 占着设备却不服务时的自动检测与修复（driverless 优先、hplip 兜底要在界面上标出来）
+- 最新发布：`v2026.10.29-8`（AppImage、deb、rpm、Arch 包；dnf 仓库每次发版自动重建）
+- **所有 issue 都已关闭**：#1、#2、#3、#4、#5（提案，驳回）、#8、#11、#14
+- 最后一版 #14 做的事：识别"`ipp-usb` 服务在跑、60000 却不应答、真机队列是 `hp:/usb/…`"这个状态，行内说明并给一个按钮，问是"重启 ipp-usb"（优先，回来后就能切 driverless）还是"停用它、改用 hplip"；两条都走 `pkexec`，窗口不阻塞。每行还会标出当前驱动（`· IPP` / `· hplip`）
 - 本机（bluefin）：AppImage 已是最新；`DeskJet-2600` 队列是 driverless，指向 `ipp://localhost:60000/ipp/print`
-- 另一台（192.168.1.12）：ipp-usb 会"占着设备但不监听 60000"，目前靠 `systemctl stop ipp-usb` + hplip 队列维持打印——这正是 #14 要变成按钮的场景
+- 另一台（192.168.1.12）：ipp-usb 会"占着设备但不监听 60000"。升级到 -8 后窗口会直接给出上面那两个按钮，不再需要手动 `systemctl stop ipp-usb`
 
 已知的两个小坑（不阻塞使用）：
 
