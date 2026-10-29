@@ -98,11 +98,21 @@ fn is_executable(path: &Path) -> bool {
 /// Is `ipp-usb` actually serving IPP on its port right now?
 ///
 /// Being on `PATH` only says the package is installed. Whether it holds the
-/// printer is a different question: when nothing answers on [`PORT`], hplip owns
-/// the device and printing through it is fine, so there is no conflict to
-/// report — and pointing a queue at this port would only break it.
+/// printer is a different question: when nothing answers, hplip owns the device
+/// and printing through it is fine, so there is no conflict to report — and
+/// pointing a queue at a dead port would only break it.
 pub fn serving() -> bool {
-    serving_at("127.0.0.1", PORT)
+    serving_port().is_some()
+}
+
+/// The port `ipp-usb` answers on, when it answers at all.
+///
+/// Its configuration allocates the port from `http-min-port` upwards, not
+/// necessarily the first one: if 60000 was taken when a device instance
+/// started, the printer is served on 60001, 60002, … and a check that only
+/// looks at 60000 would report "not serving" while it plainly is.
+pub fn serving_port() -> Option<u16> {
+    (PORT..PORT.saturating_add(16)).find(|port| serving_at("127.0.0.1", *port))
 }
 
 /// [`serving`] for any host and port, so tests can stand up a listener.

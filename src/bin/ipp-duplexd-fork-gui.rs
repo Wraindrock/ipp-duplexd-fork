@@ -1047,6 +1047,9 @@ fn confirm_recover_to_ipp(state: &Rc<State>, queue: &str, device_uri: &str) {
 fn run_ipp_usb(state: &Rc<State>, command: &[&str], follow_up: Option<hplip::Conflict>) {
     let locale = state.locale.get();
     let action = command.join(" ");
+    // "stopped" and "restarted but silent" are different outcomes and used to
+    // share one message, which read as if the window had given up on ipp-usb.
+    let stopping = command.contains(&"stop");
     let mut child = match Command::new("pkexec").args(command).spawn() {
         Ok(child) => child,
         Err(e) => {
@@ -1084,8 +1087,11 @@ fn run_ipp_usb(state: &Rc<State>, command: &[&str], follow_up: Option<hplip::Con
                         rebuild(&state);
                     }
                 }
-            } else {
+            } else if stopping {
                 toast(&state, &l10n::text(locale, "gui.window.ipp_usb_stopped"));
+                rebuild(&state);
+            } else {
+                toast(&state, &l10n::text(locale, "gui.window.ipp_usb_still_down"));
                 rebuild(&state);
             }
             glib::ControlFlow::Break
@@ -1099,7 +1105,14 @@ fn switch_queue_to_ipp_usb(state: &Rc<State>, conflict: &hplip::Conflict) {
     let locale = state.locale.get();
     let dir = service::data_dir();
     let result = queues::ppd_text(&conflict.queue).and_then(|ppd| {
-        queues::switch_to_ipp_usb(&conflict.queue, &conflict.device_uri, &ppd, &dir)
+        let port = usb::serving_port().ok_or_else(|| "ipp-usb is not answering".to_string())?;
+        queues::switch_to_ipp_usb(
+            &conflict.queue,
+            &conflict.device_uri,
+            &ppd,
+            &hplip::ipp_usb_uri(port),
+            &dir,
+        )
     });
     match result {
         Ok(()) => {
