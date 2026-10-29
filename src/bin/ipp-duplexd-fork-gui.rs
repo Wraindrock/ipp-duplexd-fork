@@ -299,6 +299,7 @@ fn run_window(locale: &'static str, hooks: Hooks) -> Result<u8, String> {
         // (the window used to only start the listener); register them so the
         // desktop's printer settings list them.
         register_queues(&state);
+        refresh_driverless_ports(&state);
 
         if hooks.add {
             // The Xvfb smoke test also opens the "+" dialog, so the detection
@@ -1496,6 +1497,63 @@ fn register_queues(state: &Rc<State>) {
             }
         }
     });
+}
+
+/// ipp-usb allocates its port from 60000 upwards, so a driverless queue that
+/// pointed at the old one stops printing for no visible reason after a restart.
+/// Point it at the port that answers now.
+fn refresh_driverless_ports(state: &Rc<State>) {
+    let Some(port) = usb::serving_port() else {
+        return;
+    };
+    let reals: Vec<String> = state
+        .config
+        .borrow()
+        .printers
+        .iter()
+        .map(|printer| printer.real.clone())
+        .collect();
+    let queues = discover::cups_printers().unwrap_or_default();
+    for real in reals {
+        let Some(queue) = hplip::queue_of_real(&real) else {
+            continue;
+        };
+        let Some(device) = queues
+            .iter()
+            .find(|known| known.queue == queue)
+            .and_then(|known| known.device_uri.as_deref())
+        else {
+            continue;
+        };
+        let Some(pointed_at) = usb::ipp_usb_port_of(device) else {
+            continue;
+        };
+        if pointed_at == port {
+            continue;
+        }
+        let locale = state.locale.get();
+        match queues::repoint(&queue, &hplip::ipp_usb_uri(port)) {
+            Ok(()) => {
+                toast(
+                    state,
+                    &l10n::tr(
+                        locale,
+                        "gui.window.port_moved",
+                        &[("port", port.to_string())],
+                    ),
+                );
+                rebuild(state);
+            }
+            Err(e) => toast(
+                state,
+                &l10n::tr(
+                    locale,
+                    "gui.window.queue_failed",
+                    &[("name", queue), ("err", e)],
+                ),
+            ),
+        }
+    }
 }
 
 /// A modal "this is running" window with a spinner; the caller closes it.
