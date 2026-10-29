@@ -384,7 +384,20 @@ pub fn refresh_image() -> Result<(), String> {
     if let Some(dir) = installed.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::copy(&running, &installed).map_err(|e| e.to_string())?;
+    // The unit is running the file we are replacing: writing into it directly
+    // fails with "Text file busy". Copy beside it and rename over it, which
+    // swaps the directory entry and leaves the running process on its own
+    // inode.
+    let temporary = installed.with_extension("AppImage.new");
+    std::fs::copy(&running, &temporary).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(&temporary, &installed).map_err(|e| e.to_string())?;
+    return Ok(());
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
