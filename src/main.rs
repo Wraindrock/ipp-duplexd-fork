@@ -1749,12 +1749,70 @@ const NO_FORWARD: &[&str] = &[
 /// the portable IPP form and is mapped by CUPS itself.
 fn forwarded_attrs(attrs: &[Attr]) -> Vec<Attr> {
     let has_media = attrs.iter().any(|a| a.name == "media");
-    attrs
+    let page_size = attrs
+        .iter()
+        .find(|a| a.name == "PageSize")
+        .and_then(|a| a.first_str());
+    let mut out: Vec<Attr> = attrs
         .iter()
         .filter(|a| !NO_FORWARD.contains(&a.name.as_str()))
-        .filter(|a| !(has_media && a.name == "PageSize"))
+        .filter(|a| a.name != "PageSize")
         .cloned()
-        .collect()
+        .collect();
+    if !has_media {
+        // A print dialog usually only sets the PPD option, and CUPS does not
+        // turn that back into `media` before the job reaches us. Translate the
+        // name it used into the portable keyword, which the target maps to its
+        // own size; an unknown name goes through untouched.
+        match page_size.map(media_keyword_of) {
+            Some(Some(keyword)) => out.push(Attr::str(ipp::T_KEYWORD, "media", keyword)),
+            Some(None) => {
+                if let Some(attr) = attrs.iter().find(|a| a.name == "PageSize") {
+                    out.push(attr.clone());
+                }
+            }
+            None => {}
+        }
+    }
+    out
+}
+
+/// The IPP media keyword behind a PPD page-size option name.
+///
+/// CUPS names the entries of an IPP-generated PPD with a fixed set of names
+/// (`ISOB5`, `B5`, `A4`, …) that are not the IPP keywords, so they mean nothing
+/// to a queue whose PPD was written by someone else (hplip's calls the same
+/// size `B5176x250`). The table covers the sizes CUPS knows, which is what an
+/// IPP Everywhere PPD can offer in the first place.
+fn media_keyword_of(page_size: &str) -> Option<&'static str> {
+    const TABLE: &[(&str, &str)] = &[
+        ("3.5x5", "oe_photo-l_3.5x5in"),
+        ("4x6", "na_index-4x6_4x6in"),
+        ("5x7", "na_5x7_5x7in"),
+        ("5x8", "na_index-5x8_5x8in"),
+        ("8x10", "na_govt-letter_8x10in"),
+        ("A4", "iso_a4_210x297mm"),
+        ("A5", "iso_a5_148x210mm"),
+        ("A6", "iso_a6_105x148mm"),
+        ("B5", "jis_b5_182x257mm"),
+        ("ISOB5", "iso_b5_176x250mm"),
+        ("Env10", "na_number-10_4.125x9.5in"),
+        ("EnvC5", "iso_c5_162x229mm"),
+        ("EnvC6", "iso_c6_114x162mm"),
+        ("EnvDL", "iso_dl_110x220mm"),
+        ("EnvChou3", "jpn_chou3_120x235mm"),
+        ("EnvChou4", "jpn_chou4_90x205mm"),
+        ("EnvMonarch", "na_monarch_3.875x7.5in"),
+        ("Executive", "na_executive_7.25x10.5in"),
+        ("Legal", "na_legal_8.5x14in"),
+        ("Letter", "na_letter_8.5x11in"),
+        ("Postcard", "jpn_hagaki_100x148mm"),
+        ("Statement", "na_invoice_5.5x8.5in"),
+    ];
+    TABLE
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(page_size))
+        .map(|(_, keyword)| *keyword)
 }
 
 fn forward(ctx: &Ctx, file: &str, name: &str, user: &str, attrs: &[Attr]) -> Result<i32, String> {
@@ -1912,24 +1970,41 @@ mod tests {
 
     #[test]
     fn the_clients_ppd_option_names_are_not_forwarded() {
+        // the dialog path: only the PPD option arrives, and it is translated
         let attrs = vec![
-            Attr::str(ipp::T_KEYWORD, "media", "iso_b5_176x250mm"),
             Attr::str(ipp::T_NAME, "PageSize", "ISOB5"),
             Attr::str(ipp::T_NAME, "ColorModel", "Gray"),
             Attr::int(ipp::T_INTEGER, "copies", 2),
         ];
         let forwarded = forwarded_attrs(&attrs);
         let names: Vec<&str> = forwarded.iter().map(|a| a.name.as_str()).collect();
-        assert!(names.contains(&"media"));
         assert!(!names.contains(&"PageSize"), "{names:?}");
-        // copies is ours to apply, and colour is still the target's business
         assert!(!names.contains(&"copies"), "{names:?}");
         assert!(names.contains(&"ColorModel"), "{names:?}");
+        let media = forwarded
+            .iter()
+            .find(|a| a.name == "media")
+            .expect("a media attribute");
+        assert_eq!(media.first_str(), Some("iso_b5_176x250mm"));
 
-        // without media the page size would be lost, so it is kept
-        let only_page_size = vec![Attr::str(ipp::T_NAME, "PageSize", "ISOB5")];
-        let forwarded = forwarded_attrs(&only_page_size);
+        // with an explicit media the PPD name is redundant and goes away
+        let attrs = vec![
+            Attr::str(ipp::T_KEYWORD, "media", "iso_b5_176x250mm"),
+            Attr::str(ipp::T_NAME, "PageSize", "ISOB5"),
+        ];
+        let forwarded = forwarded_attrs(&attrs);
+        let media: Vec<&Attr> = forwarded.iter().filter(|a| a.name == "media").collect();
+        assert_eq!(media.len(), 1);
+        assert!(forwarded.iter().all(|a| a.name != "PageSize"));
+
+        // an unknown name is passed through rather than dropped
+        let attrs = vec![Attr::str(ipp::T_NAME, "PageSize", "Weird42")];
+        let forwarded = forwarded_attrs(&attrs);
         assert_eq!(forwarded.len(), 1);
         assert_eq!(forwarded[0].name, "PageSize");
+
+        assert_eq!(media_keyword_of("ISOB5"), Some("iso_b5_176x250mm"));
+        assert_eq!(media_keyword_of("B5"), Some("jis_b5_182x257mm"));
+        assert_eq!(media_keyword_of("nonsense"), None);
     }
 }
