@@ -1144,7 +1144,6 @@ fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Preferen
     }
     group.add(&row);
 
-    group
     // The desktop shortcut updates the window's image; the unit runs a copy
     // under the data directory. When they differ the service keeps starting
     // the old build, and every fix looks like it did not apply.
@@ -1168,6 +1167,8 @@ fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Preferen
         row.add_suffix(&update);
         group.add(&row);
     }
+
+    group
 }
 
 /// systemd answers in English (`active`, `inactive`, …); the window should not.
