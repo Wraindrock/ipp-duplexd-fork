@@ -1145,6 +1145,29 @@ fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Preferen
     group.add(&row);
 
     group
+    // The desktop shortcut updates the window's image; the unit runs a copy
+    // under the data directory. When they differ the service keeps starting
+    // the old build, and every fix looks like it did not apply.
+    if let Some((_running, installed)) = service::stale_image() {
+        let row = adw::ActionRow::builder()
+            .title(&labels.service_stale_title)
+            .subtitle(l10n::tr(
+                state.locale.get(),
+                "gui.window.service_stale_subtitle",
+                &[("path", installed.display().to_string())],
+            ))
+            .build();
+        row.set_subtitle_lines(2);
+        row.add_css_class("warning");
+        let update = gtk::Button::with_label(&labels.service_stale_action);
+        update.add_css_class("flat");
+        {
+            let state = state.clone();
+            update.connect_clicked(move |_| refresh_service_image(&state));
+        }
+        row.add_suffix(&update);
+        group.add(&row);
+    }
 }
 
 /// systemd answers in English (`active`, `inactive`, …); the window should not.
@@ -1179,29 +1202,6 @@ fn confirm_uninstall(state: &Rc<State>) {
         });
     }
     dialog.present(Some(&state.window));
-    // The desktop shortcut updates the window's image; the unit runs a copy
-    // under the data directory. When they differ the service keeps starting
-    // the old build, and every fix looks like it did not apply.
-    if let Some((_running, installed)) = service::stale_image() {
-        let row = adw::ActionRow::builder()
-            .title(&labels.service_stale_title)
-            .subtitle(l10n::tr(
-                state.locale.get(),
-                "gui.window.service_stale_subtitle",
-                &[("path", installed.display().to_string())],
-            ))
-            .build();
-        row.set_subtitle_lines(2);
-        row.add_css_class("warning");
-        let update = gtk::Button::with_label(&labels.service_stale_action);
-        update.add_css_class("flat");
-        {
-            let state = state.clone();
-            update.connect_clicked(move |_| refresh_service_image(&state));
-        }
-        row.add_suffix(&update);
-        group.add(&row);
-    }
 }
 
 fn uninstall_service(state: &Rc<State>) {
