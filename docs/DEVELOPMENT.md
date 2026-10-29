@@ -1,5 +1,9 @@
 # Developing ipp-duplexd-fork
 
+The map of the documentation is [README](README.md); the list of things that
+move together with a change is [CHANGE-MAP](CHANGE-MAP.md); the language
+catalogs are described in [I18N](I18N.md).
+
 Everything needed to continue this project is in the repository and in GitHub
 (the code, the tests, the catalogs, the packaging scripts, the CI workflows and
 the release notes attached to every tag). This file records what is *not*

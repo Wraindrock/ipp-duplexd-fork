@@ -1,5 +1,7 @@
 # ipp-duplexd-fork — manual duplex printing via a virtual IPP printer
 
+**English** · [简体中文](README.zh-CN.md)
+
 > This is a fork of [ipp-duplexd][upstream], adding i18n and a GUI manager.
 > On Fedora, install it with `dnf` from the [GitHub-hosted repository][repo];
 > everywhere else, build a package locally with the scripts in
@@ -24,6 +26,20 @@ app --> CUPS queue (driverless) --> ipp-duplexd-fork (127.0.0.1:6632)
                                        |<-- you flip the stack, GET /flip
                                        '--> real printer: even pages reversed (...,4,2)
 ```
+
+## Documentation
+
+The user guide is this file. Everything else is in [docs/](docs/README.md):
+
+| Read | For |
+| --- | --- |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | every operation, and which front end owns it |
+| [docs/INTERACTION.md](docs/INTERACTION.md) | one core, three front ends — the design |
+| [docs/I18N.md](docs/I18N.md) | the language catalogs, and what the tests enforce |
+| [docs/CHANGE-MAP.md](docs/CHANGE-MAP.md) | what else has to change when you change something |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | toolchain, checks, release |
+| [docs/UI-FRAMEWORK.md](docs/UI-FRAMEWORK.md) | why GTK4 + libadwaita |
+| [docs/ISSUES.md](docs/ISSUES.md) | the log of what was reported and fixed |
 
 ## Packages
 
@@ -89,7 +105,7 @@ sudo dnf upgrade            # later: picks up new builds
 ## Trying it without installing (AppImage)
 
 For a quick look without installing anything, build a single-file image — it
-carries the daemon, the wizard and the GTK4 application. It deliberately does
+carries the daemon, the terminal front end and the GTK4 application. It deliberately does
 **not** bundle GTK4 or libadwaita: the window uses your desktop's copies, so it
 always matches your current GNOME (or other desktop) style instead of freezing
 whatever toolkit the image happened to be built against. Your machine therefore
@@ -100,7 +116,7 @@ needs `gtk4` (>= 4.10) and `libadwaita` (>= 1.5), plus `qpdf` for printing:
 chmod +x packaging/ipp-duplexd-fork-*.AppImage
 ./packaging/ipp-duplexd-fork-*.AppImage                 # the window
 ./packaging/ipp-duplexd-fork-*.AppImage daemon --printer ipp://192.168.1.50/ipp/print
-./packaging/ipp-duplexd-fork-*.AppImage setup           # the setup wizard
+./packaging/ipp-duplexd-fork-*.AppImage setup           # the terminal menu
 ```
 
 Running it with no arguments opens the window (do not use `sudo`: it has to
@@ -139,7 +155,7 @@ option. The window checks for `qpdf` in all three places before it installs
 anything, and says which command to run when it is missing.
 
 It is a test build, not a replacement for the packages: it is unsigned, it
-does not install anything or register with the desktop, and the wizard still
+does not install anything or register with the desktop, and the terminal front end still
 needs the host's `cups-client` because it has to talk to the real CUPS. The
 script pins the AppImage tooling to a release tag and verifies its checksum, and
 it exercises the finished image (the three binaries are inside, no GTK4 or
@@ -556,8 +572,9 @@ and writes the user unit for you if the packaged one is absent).
 ## Development
 
 The toolchain recipe for this workstation, the list of checks, the release
-procedure and the operational gotchas are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-Nothing there is required to *use* the program.
+procedure and the operational gotchas are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md);
+[docs/CHANGE-MAP.md](docs/CHANGE-MAP.md) lists what else has to move when one
+piece does. Nothing there is required to *use* the program.
 
 ## Formatting
 
