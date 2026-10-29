@@ -260,3 +260,20 @@ lpadmin -p DeskJet-2600 -E -v ipp://localhost:60000/ipp/print -m everywhere
 验证：本地 `cargo fmt --check`、`clippy --all-targets` 与 `--features gui`、`cargo test --features gui` 全绿（lib 59、e2e 12、gui 3、i18n 14、service 9）；PR #9、#10 的 CI 各自六个 job 全绿。功能实测：另起一台守护进程（`real` 指向不可达端口），`jobs_at` 先返回 0 条，提交作业后返回 1 条（`#1 "untitled" state=5 "printing odd pages"`），`printer_state_at` 返回 5（停止）——与离线时守护进程报的状态一致。
 
 没做的：打印预览、多用户/远程管理（#3 的"不在范围"）。
+
+## 已做（2026-10-29 下午）：B5 被打成 A4 的真正原因（两段）
+
+用户机器上：直接 `lp -d DeskJet-2600 -o media=iso_b5_176x250mm` 打出的是 B5，但走虚拟打印机、在打印对话框里选 B5，出来是"B5 内容摆在 A4 页中间"。分两段修：
+
+1. **-3（`ffee388`）**：守护进程把客户端 PPD 的选项名 `PageSize=ISOB5` 原样转给真实队列，而 hplip 的 PPD 把同一尺寸叫 `B5176x250`；目标 PPD 不认识这个名字，就回落到默认 A4。修法：有 `media` 时丢掉 `PageSize`。
+2. **-4（`bcec6d8`）**：修完 -3 后对话框那条路仍然 A4——用临时队列复现发现**打印对话框只发 `PageSize`、根本不发 `media`**：
+
+```
+lp -o PageSize=ISOB5 → [attrs] PageSize = ISOB5   (没有 media)
+```
+
+于是当 `media` 缺失时，把 PPD 名翻译成 CUPS 生成它时用的 IPP 关键字（`ISOB5 → iso_b5_176x250mm`、`B5 → jis_b5_182x257mm`…，表里覆盖 CUPS 的全部标准尺寸名）再转发。复现里现在输出 `[fwd] media = iso_b5_176x250mm`。
+
+用户实测：Rnote → 虚拟打印机 → B5，出纸正确。
+
+顺带确认过的：那台机器上 `ipp-usb` 会"占着设备却不监听 60000"（hplip 因此永远打不开设备），手工 `systemctl stop ipp-usb` 后恢复；这个状态的自动检测与修复是 #14。
