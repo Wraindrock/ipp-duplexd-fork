@@ -787,6 +787,15 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
         let conflict = hplip::conflict_for(real, &known_queues, ipp_usb);
         let stuck = hplip::stuck(real, &known_queues, ipp_usb_active, ipp_usb);
         let driver = hplip::driver(real, &known_queues);
+        let hplip_queue = hplip::queue_and_device(real, &known_queues);
+        // A printer passed through to another machine is simply not here; that
+        // is a different situation from ipp-usb being broken, and saying so
+        // stops the row from offering fixes that cannot work.
+        let absent = hplip_queue
+            .as_ref()
+            .and_then(|(_, device)| hplip::serial_of(device))
+            .and_then(usb::attached)
+            == Some(false);
         let state_text = match gui::printer_state_at(listen) {
             Some(3) => l10n::text(locale, "gui.window.state_idle"),
             Some(4) => l10n::text(locale, "gui.window.state_busy"),
@@ -806,7 +815,10 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
                 &[("queue", queue.clone())],
             ));
         }
-        if let Some(conflict) = &conflict {
+        if absent {
+            subtitle.push('\n');
+            subtitle.push_str(&l10n::text(locale, "gui.window.usb_absent"));
+        } else if let Some(conflict) = &conflict {
             subtitle.push('\n');
             subtitle.push_str(&l10n::tr(
                 locale,
@@ -819,14 +831,14 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             .subtitle(&subtitle)
             .build();
         row.set_tooltip_text(Some(&gui::row_detail(locale, listen, real)));
-        row.set_subtitle_lines(if conflict.is_some() || stuck.is_some() {
+        row.set_subtitle_lines(if absent || conflict.is_some() || stuck.is_some() {
             2
         } else {
             1
         });
 
-        if let Some((queue, device)) = hplip::queue_and_device(real, &known_queues) {
-            if usb::installed() {
+        if let Some((queue, device)) = hplip_queue {
+            if !absent && usb::installed() {
                 // Always leave a way back to the driverless path: starting
                 // ipp-usb first when it is not answering.
                 let recover =
