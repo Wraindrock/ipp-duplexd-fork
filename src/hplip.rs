@@ -59,8 +59,12 @@ pub struct Conflict {
 
 /// The conflict behind one printer's `real` address, if there is one.
 ///
-/// `ipp_usb` is passed in (not looked up) so the caller decides when to pay for
-/// the check and the tests decide the answer.
+/// `ipp_usb` means "ipp-usb is answering on its port", not "the package is
+/// installed": only a serving ipp-usb can be the one holding the device. On a
+/// machine where hplip owns the printer there is no conflict to report.
+///
+/// It is passed in (not looked up) so the caller decides when to pay for the
+/// check and the tests decide the answer.
 pub fn conflict_for(real: &str, queues: &[Discovered], ipp_usb: bool) -> Option<Conflict> {
     if !ipp_usb {
         return None;
