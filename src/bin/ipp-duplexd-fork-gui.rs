@@ -277,6 +277,19 @@ fn run_window(locale: &'static str, hooks: Hooks) -> Result<u8, String> {
             let state = state.clone();
             add.connect_clicked(move |_| editor(&state, None));
         }
+        {
+            // The subtitle in the title bar is the one part of the header that
+            // says where you are; keep it in step with the switcher.
+            let title = title.clone();
+            let printers = labels.printers_title.clone();
+            let jobs = labels.jobs_title.clone();
+            state.stack.connect_visible_child_name_notify(move |stack| {
+                match stack.visible_child_name().as_deref() {
+                    Some("jobs") => title.set_subtitle(&jobs),
+                    _ => title.set_subtitle(&printers),
+                }
+            });
+        }
 
         rebuild(&state);
         window.present();
@@ -723,6 +736,14 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             .subtitle(&labels.no_printers_body)
             .build();
         row.set_subtitle_lines(4);
+        let add = gtk::Button::with_label(&labels.add_printer);
+        add.add_css_class("suggested-action");
+        add.set_valign(gtk::Align::Center);
+        {
+            let state = state.clone();
+            add.connect_clicked(move |_| editor(&state, None));
+        }
+        row.add_suffix(&add);
         group.add(&row);
     }
 
@@ -734,7 +755,7 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             Some(_) => l10n::text(locale, "gui.window.state_stopped"),
             None => l10n::text(locale, "gui.window.state_unknown"),
         };
-        let mut subtitle = format!("{} · {state_text}", gui::row_detail(locale, listen, real));
+        let mut subtitle = format!("{} · {state_text}", gui::short_real(real));
         if let Some(conflict) = &conflict {
             subtitle.push('\n');
             subtitle.push_str(&l10n::tr(
@@ -747,7 +768,8 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             .title(name)
             .subtitle(&subtitle)
             .build();
-        row.set_subtitle_lines(if conflict.is_some() { 3 } else { 1 });
+        row.set_tooltip_text(Some(&gui::row_detail(locale, listen, real)));
+        row.set_subtitle_lines(if conflict.is_some() { 2 } else { 1 });
 
         if let Some(conflict) = conflict.clone() {
             let fix = icon_button("dialog-warning-symbolic", &labels.hplip_tooltip);
@@ -960,14 +982,22 @@ fn switch_queue_to_ipp_usb(state: &Rc<State>, conflict: &hplip::Conflict) {
             );
             rebuild(state);
         }
-        Err(e) => toast(
-            state,
-            &l10n::tr(
+        Err(e) => {
+            let title = l10n::tr(
                 locale,
-                "gui.window.hplip_failed",
-                &[("queue", conflict.queue.clone()), ("err", e)],
-            ),
-        ),
+                "gui.window.hplip_failed_title",
+                &[("queue", conflict.queue.clone())],
+            );
+            let body = format!(
+                "{e}\n\n{}",
+                l10n::tr(
+                    locale,
+                    "gui.window.hplip_manual",
+                    &[("queue", conflict.queue.clone())]
+                )
+            );
+            show_text(state, &title, &body);
+        }
     }
 }
 
@@ -1041,7 +1071,7 @@ fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Preferen
     let detail = if !service::installed() {
         labels.service_not_installed.clone()
     } else if service::available() {
-        service::state_text()
+        localized_service_state(labels, &service::state_text())
     } else {
         labels.service_missing.clone()
     };
@@ -1072,6 +1102,16 @@ fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Preferen
     group.add(&row);
 
     group
+}
+
+/// systemd answers in English (`active`, `inactive`, …); the window should not.
+fn localized_service_state(labels: &gui::WindowLabels, raw: &str) -> String {
+    match raw.trim() {
+        "active" => labels.service_active.clone(),
+        "inactive" => labels.service_inactive.clone(),
+        "failed" => labels.service_failed.clone(),
+        other => other.to_string(),
+    }
 }
 
 /// Ask before removing a unit: the printers stay, but a service that vanishes
@@ -1474,9 +1514,17 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     fields.append(&listen);
     fields.append(&real);
 
+    // The dialog grew two groups of settings; keep it inside the screen and
+    // let it scroll instead of pushing the buttons off the bottom.
+    let scroller = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .max_content_height(560)
+        .child(&body)
+        .build();
     let dialog = adw::AlertDialog::builder()
         .heading(&heading)
-        .extra_child(&body)
+        .extra_child(&scroller)
         .build();
 
     match index {
