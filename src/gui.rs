@@ -297,6 +297,12 @@ pub struct WindowLabels {
     pub ipp_usb_serving: String,
     pub ipp_usb_stopped: String,
     pub ipp_usb_failed: String,
+    pub ipp_recover_tooltip: String,
+    pub ipp_recover_title: String,
+    pub ipp_recover_body: String,
+    pub ipp_recover_action: String,
+    pub queue_busy: String,
+    pub queue_registered: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -427,6 +433,12 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         ipp_usb_serving: text("gui.window.ipp_usb_serving"),
         ipp_usb_stopped: text("gui.window.ipp_usb_stopped"),
         ipp_usb_failed: text("gui.window.ipp_usb_failed"),
+        ipp_recover_tooltip: text("gui.window.ipp_recover_tooltip"),
+        ipp_recover_title: text("gui.window.ipp_recover_title"),
+        ipp_recover_body: text("gui.window.ipp_recover_body"),
+        ipp_recover_action: text("gui.window.ipp_recover_action"),
+        queue_busy: text("gui.window.queue_busy"),
+        queue_registered: text("gui.window.queue_registered"),
     }
 }
 
