@@ -277,3 +277,16 @@ lp -o PageSize=ISOB5 → [attrs] PageSize = ISOB5   (没有 media)
 用户实测：Rnote → 虚拟打印机 → B5，出纸正确。
 
 顺带确认过的：那台机器上 `ipp-usb` 会"占着设备却不监听 60000"（hplip 因此永远打不开设备），手工 `systemctl stop ipp-usb` 后恢复；这个状态的自动检测与修复是 #14。
+
+## 现状（2026-10-29 收尾）
+
+- 最新发布：`v2026.10.29-7`（AppImage、deb、rpm、Arch 包；dnf 仓库每次发版自动重建）
+- 已关闭：#1、#2、#3、#4、#5（提案，驳回）、#8、#11
+- 唯一开着的：**#14** —— ipp-usb 占着设备却不服务时的自动检测与修复（driverless 优先、hplip 兜底要在界面上标出来）
+- 本机（bluefin）：AppImage 已是最新；`DeskJet-2600` 队列是 driverless，指向 `ipp://localhost:60000/ipp/print`
+- 另一台（192.168.1.12）：ipp-usb 会"占着设备但不监听 60000"，目前靠 `systemctl stop ipp-usb` + hplip 队列维持打印——这正是 #14 要变成按钮的场景
+
+已知的两个小坑（不阻塞使用）：
+
+- CUPS 对连续失败的队列会自动 `disable`，`cupsenable <queue>` 能恢复；卡住的 `hp` 后端要 `systemctl restart cups` 才清掉
+- 打印对话框只发 PPD 选项名、不发 `media`，守护进程现在会翻译（`media_keyword_of`），新增打印机 PPD 若引入表中没有的尺寸名，需要往表里补一条
