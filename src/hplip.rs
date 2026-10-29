@@ -12,8 +12,10 @@
 
 use crate::discover::Discovered;
 
-/// The endpoint `ipp-usb` publishes, and what a switched queue points at.
-pub const IPP_USB_URI: &str = "ipp://localhost:60000/ipp/print";
+/// The endpoint `ipp-usb` publishes on `port`, and what a switched queue points at.
+pub fn ipp_usb_uri(port: u16) -> String {
+    format!("ipp://localhost:{port}/ipp/print")
+}
 
 /// Does this `device-uri` go through hplip's USB backend?
 ///

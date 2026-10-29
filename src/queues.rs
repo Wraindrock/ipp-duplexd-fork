@@ -17,7 +17,6 @@ use std::process::Command;
 use std::time::Duration;
 
 use crate::discover;
-use crate::hplip;
 
 /// Command used to add, change and remove queues.
 pub const LPADMIN: &str = "lpadmin";
@@ -109,19 +108,11 @@ pub fn remove(name: &str) -> Result<bool, String> {
 ///
 /// The same shape as [`add_arguments`], but pointed at ipp-usb rather than at a
 /// virtual printer, so a queue that used to go through hplip keeps working.
-pub fn driverless_arguments(name: &str) -> Vec<String> {
-    [
-        "-p",
-        name,
-        "-E",
-        "-v",
-        hplip::IPP_USB_URI,
-        "-m",
-        "everywhere",
-    ]
-    .iter()
-    .map(|part| part.to_string())
-    .collect()
+pub fn driverless_arguments(name: &str, uri: &str) -> Vec<String> {
+    ["-p", name, "-E", "-v", uri, "-m", "everywhere"]
+        .iter()
+        .map(|part| part.to_string())
+        .collect()
 }
 
 /// `lpadmin` arguments that put a queue back on the device URI and PPD saved by
@@ -180,6 +171,7 @@ pub fn switch_to_ipp_usb(
     queue: &str,
     device_uri: &str,
     ppd: &str,
+    uri: &str,
     dir: &Path,
 ) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -187,7 +179,7 @@ pub fn switch_to_ipp_usb(
         .map_err(|e| format!("{}: {e}", backup_device(dir, queue).display()))?;
     fs::write(backup_ppd(dir, queue), ppd)
         .map_err(|e| format!("{}: {e}", backup_ppd(dir, queue).display()))?;
-    if let Err(e) = run_lpadmin(&driverless_arguments(queue)) {
+    if let Err(e) = run_lpadmin(&driverless_arguments(queue, uri)) {
         let _ = fs::remove_file(backup_device(dir, queue));
         let _ = fs::remove_file(backup_ppd(dir, queue));
         return Err(e);
@@ -399,6 +391,7 @@ mod tests {
             "DeskJet-2600",
             "hp:/usb/DeskJet_2600_series?serial=X",
             "%!PS-Adobe-3.0 PPD",
+            "ipp://localhost:60001/ipp/print",
             &backup,
         )
         .unwrap();
@@ -416,7 +409,7 @@ mod tests {
             "%!PS-Adobe-3.0 PPD"
         );
         let args = std::fs::read_to_string(&log).unwrap();
-        assert!(args.contains("ipp://localhost:60000/ipp/print"), "{args}");
+        assert!(args.contains("ipp://localhost:60001/ipp/print"), "{args}");
         assert!(args.contains("-m everywhere"), "{args}");
         assert_eq!(backups(&backup), vec!["DeskJet-2600".to_string()]);
         let _ = std::fs::remove_dir_all(&dir);
@@ -430,7 +423,14 @@ mod tests {
         let log = dir.join("lpadmin-args");
         let lpadmin = recording_lpadmin(&dir, &log, "echo 'lpadmin: Forbidden' >&2\nexit 1");
         std::env::set_var(LPADMIN_ENV, &lpadmin);
-        let error = switch_to_ipp_usb("DeskJet-2600", "hp:/usb/x", "ppd", &backup).unwrap_err();
+        let error = switch_to_ipp_usb(
+            "DeskJet-2600",
+            "hp:/usb/x",
+            "ppd",
+            "ipp://localhost:60000/ipp/print",
+            &backup,
+        )
+        .unwrap_err();
         std::env::remove_var(LPADMIN_ENV);
         assert!(error.contains("Forbidden"), "unexpected error: {error}");
         assert!(!has_backup(&backup, "DeskJet-2600"));
