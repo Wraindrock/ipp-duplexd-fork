@@ -278,6 +278,14 @@ pub struct WindowLabels {
     pub hplip_restore: String,
     pub hplip_restored: String,
     pub hplip_restore_failed: String,
+    pub add_printer: String,
+    pub queue_retry_hint: String,
+    pub queue_retry_action: String,
+    pub service_active: String,
+    pub service_inactive: String,
+    pub service_failed: String,
+    pub hplip_failed_title: String,
+    pub hplip_manual: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -389,7 +397,22 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         hplip_restore: text("gui.window.hplip_restore"),
         hplip_restored: text("gui.window.hplip_restored"),
         hplip_restore_failed: text("gui.window.hplip_restore_failed"),
+        add_printer: text("gui.window.add_printer"),
+        queue_retry_hint: text("gui.window.queue_retry_hint"),
+        queue_retry_action: text("gui.window.queue_retry_action"),
+        service_active: text("gui.window.service_active"),
+        service_inactive: text("gui.window.service_inactive"),
+        service_failed: text("gui.window.service_failed"),
+        hplip_failed_title: text("gui.window.hplip_failed_title"),
+        hplip_manual: text("gui.window.hplip_manual"),
     }
+}
+
+/// The short form of a printer's real address: the queue name for a local CUPS
+/// queue (that is what a person calls the printer), the URI otherwise. Keeps
+/// the row to one line instead of wrapping a long URL.
+pub fn short_real(real: &str) -> String {
+    crate::hplip::queue_of_real(real).unwrap_or_else(|| real.to_string())
 }
 
 /// The next free loopback address for a new virtual printer. The manager
