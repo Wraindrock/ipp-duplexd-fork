@@ -199,6 +199,7 @@ pub struct WindowLabels {
     pub field_name: String,
     pub field_listen: String,
     pub field_real: String,
+    pub field_note: String,
     pub save: String,
     pub cancel: String,
     pub remove_title: String,
@@ -336,6 +337,7 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         field_name: text("gui.window.field_name"),
         field_listen: text("gui.window.field_listen"),
         field_real: text("gui.window.field_real"),
+        field_note: text("gui.window.field_note"),
         save: text("common.save"),
         cancel: text("common.cancel"),
         remove_title: text("gui.window.remove_title"),
@@ -538,6 +540,18 @@ pub fn reload_everywhere(addrs: &[String], lang: &str) -> usize {
         .iter()
         .filter(|addr| http_post(addr, "/reload", lang).is_ok())
         .count()
+}
+
+/// The flip dialog's text: the standard prompt, then the printer's own note
+/// when one was set, on its own line so it reads as the user's words.
+pub fn flip_text(locale: &str, job: &str, note: &str) -> String {
+    let base = l10n::tr(locale, "daemon.dialog.text", &[("job", job.to_string())]);
+    let note = note.trim();
+    if note.is_empty() {
+        base
+    } else {
+        format!("{base}\n\n{note}")
+    }
 }
 
 pub fn unreachable(locale: &str, addr: &str, err: &str) -> String {
@@ -973,4 +987,13 @@ mod tests {
         assert_eq!(jobs[1].id, 8);
         assert_eq!(jobs[1].state, 0);
     }
+    #[test]
+    fn the_flip_dialog_carries_the_printers_own_note() {
+        let plain = flip_text("en", "doc1", "");
+        assert!(!plain.contains("\n\n"), "{plain}");
+        let noted = flip_text("en", "doc1", "  face down, long edge away  ");
+        assert!(noted.starts_with(&plain), "{noted}");
+        assert!(noted.ends_with("face down, long edge away"), "{noted}");
+    }
+
 }
