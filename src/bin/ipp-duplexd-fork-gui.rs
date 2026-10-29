@@ -1094,6 +1094,19 @@ fn restore_hplip_queue(state: &Rc<State>, queue: &str) {
     }
 }
 
+/// Copy this window's image over the one the unit starts, then restart it.
+fn refresh_service_image(state: &Rc<State>) {
+    let locale = state.locale.get();
+    match service::refresh_image().and_then(|()| service::restart()) {
+        Ok(()) => toast(state, &l10n::text(locale, "gui.window.service_stale_done")),
+        Err(e) => toast(
+            state,
+            &l10n::tr(locale, "gui.window.service_stale_failed", &[("err", e)]),
+        ),
+    }
+    rebuild(state);
+}
+
 fn service_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::new();
     group.set_title(&labels.service_title);
@@ -1166,6 +1179,29 @@ fn confirm_uninstall(state: &Rc<State>) {
         });
     }
     dialog.present(Some(&state.window));
+    // The desktop shortcut updates the window's image; the unit runs a copy
+    // under the data directory. When they differ the service keeps starting
+    // the old build, and every fix looks like it did not apply.
+    if let Some((_running, installed)) = service::stale_image() {
+        let row = adw::ActionRow::builder()
+            .title(&labels.service_stale_title)
+            .subtitle(l10n::tr(
+                state.locale.get(),
+                "gui.window.service_stale_subtitle",
+                &[("path", installed.display().to_string())],
+            ))
+            .build();
+        row.set_subtitle_lines(2);
+        row.add_css_class("warning");
+        let update = gtk::Button::with_label(&labels.service_stale_action);
+        update.add_css_class("flat");
+        {
+            let state = state.clone();
+            update.connect_clicked(move |_| refresh_service_image(&state));
+        }
+        row.add_suffix(&update);
+        group.add(&row);
+    }
 }
 
 fn uninstall_service(state: &Rc<State>) {
