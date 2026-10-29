@@ -55,6 +55,10 @@ pub struct Printer {
     /// Ask for a confirmation before printing the backs.
     #[serde(default = "gui_default")]
     pub gui: bool,
+    /// Free text shown in the flip dialog only: how to flip this stack, or
+    /// anything else worth reading at that moment.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
 }
 
 fn blank_default() -> String {
@@ -94,6 +98,7 @@ impl Printer {
             rotate_even: rotate_default(),
             auto_continue: 0,
             gui: gui_default(),
+            note: String::new(),
         }
     }
 }
@@ -435,4 +440,28 @@ real = "ipp://127.0.0.1:631/printers/laser"
         config.validate("en").expect("valid");
         assert_eq!(config.printers.len(), 1);
     }
+    #[test]
+    fn a_note_is_optional_and_round_trips() {
+        let text = r#"
+[[printer]]
+name = "d"
+listen = "127.0.0.1:6632"
+real = "ipp://127.0.0.1:631/printers/x"
+note = "flip the stack face down"
+"#;
+        let config = Config::parse(text, Path::new("config.toml"), "en").expect("parse");
+        assert_eq!(config.printers[0].note, "flip the stack face down");
+        let written = config.render().expect("render");
+        assert!(written.contains("note = "), "{written}");
+        // and a printer without one writes nothing about notes
+        let bare = Config::parse(
+            "[[printer]]\nname = \"d\"\nlisten = \"127.0.0.1:6632\"\nreal = \"ipp://x\"\n",
+            Path::new("config.toml"),
+            "en",
+        )
+        .expect("parse");
+        let bare_text = bare.render().expect("render");
+        assert!(!bare_text.contains("note"), "{bare_text}");
+    }
+
 }

@@ -48,6 +48,7 @@ struct Settings {
     poll: u64,          // seconds between remote job-state polls
     gui: bool,          // open a desktop dialog to confirm the flip
     settle: u64,        // seconds to give the real printer before the backs
+    note: String,       // the printer's own text, shown in the flip dialog
 }
 
 /// A job's state message.
@@ -239,6 +240,7 @@ fn settings_of(printer: &cfg_file::Printer) -> Result<Settings, String> {
         poll: printer.poll,
         gui: printer.gui,
         settle: printer.settle,
+        note: printer.note.clone(),
     })
 }
 
@@ -452,6 +454,7 @@ fn legacy_printer(argv: &[String]) -> Result<cfg_file::Printer, String> {
         rotate_even: settings.rotate_even,
         auto_continue: settings.auto_continue,
         gui: settings.gui,
+        note: settings.note,
     })
 }
 
@@ -483,6 +486,7 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
     let mut poll = 2u64;
     let mut gui = true;
     let mut settle = 10u64;
+    let mut note = String::new();
     while let Some(a) = args.next() {
         let mut val = |what: &str| {
             args.next()
@@ -498,6 +502,7 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
                 })?);
             }
             "--name" => name = val("--name")?,
+            "--note" => note = val("--note")?,
             "--blank" => blank = val("--blank")?,
             "--auto-continue" => {
                 auto_continue = val("--auto-continue")?
@@ -553,6 +558,7 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
         poll,
         gui,
         settle,
+        note,
     })
 }
 
@@ -1362,7 +1368,7 @@ fn argument_list(parts: &[&str]) -> Vec<String> {
 }
 
 fn spawn_flip_dialog(ctx: &Arc<Ctx>, job: &str) -> Option<Arc<Mutex<Option<std::process::Child>>>> {
-    let text = t!("daemon.dialog.text", job = job).to_string();
+    let text = gui::flip_text(lang(), job, &ctx.cfg.note);
     let ok = t!("daemon.dialog.ok").to_string();
     let not_yet = t!("daemon.dialog.not_yet").to_string();
     let buttons = format!("{ok}:101,{not_yet}:102");

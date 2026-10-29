@@ -353,6 +353,7 @@ fn edit_printer(config: &mut Config, index: usize) {
     printer.name = ask(&t!("gui.window.field_name"), &printer.name);
     printer.listen = ask(&t!("gui.window.field_listen"), &printer.listen);
     printer.real = ask(&t!("gui.window.field_real"), &printer.real);
+    printer.note = ask(&t!("gui.window.field_note"), &printer.note);
     printer.blank = ask(&t!("gui.window.field_blank"), &printer.blank);
     printer.settle = ask_number(&t!("gui.window.field_settle"), printer.settle);
     printer.poll = ask_number(&t!("gui.window.field_poll"), printer.poll);

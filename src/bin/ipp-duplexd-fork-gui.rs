@@ -1560,6 +1560,8 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     listen.set_title(&labels.field_listen);
     let real = adw::EntryRow::new();
     real.set_title(&labels.field_real);
+    let note = adw::EntryRow::new();
+    note.set_title(&labels.field_note);
 
     let used: Vec<String> = state
         .config
@@ -1577,6 +1579,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
             name.set_text(&printer.name);
             listen.set_text(&printer.listen);
             real.set_text(&printer.real);
+            note.set_text(&printer.note);
             l10n::tr(
                 locale,
                 "gui.window.dialog_edit",
@@ -1652,6 +1655,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     fields.append(&name);
     fields.append(&listen);
     fields.append(&real);
+    fields.append(&note);
 
     // The dialog grew two groups of settings; keep it inside the screen and
     // let it scroll instead of pushing the buttons off the bottom.
@@ -1742,6 +1746,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                             name.set_text(&printer.name);
                             listen.set_text(&printer.listen);
                             real.set_text(&printer.real);
+                            note.set_text(&printer.note);
                             advanced.set_expanded(true);
                         });
                     }
@@ -1780,6 +1785,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
             let new_name = printer.name.clone();
             printer.listen = listen.text().to_string();
             printer.real = real.text().to_string();
+            printer.note = note.text().to_string();
             printer.blank = blank_value(blank.selected()).to_string();
             printer.settle = settle.value().round() as u64;
             printer.poll = poll.value().round().max(1.0) as u64;
