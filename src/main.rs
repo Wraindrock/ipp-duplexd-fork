@@ -1738,6 +1738,25 @@ const NO_FORWARD: &[&str] = &[
     "job-hold-until",
 ];
 
+/// The client's job attributes that may be forwarded to the real printer.
+///
+/// Two kinds are dropped: the ones we applied ourselves (see [`NO_FORWARD`])
+/// and `PageSize`, which is a *PPD option name*, not an IPP attribute. The
+/// client's queue names its page sizes after its own PPD (`ISOB5`, `B5`, …)
+/// while the real queue's PPD uses different names (`B5176x250`, …); forwarding
+/// the client's name makes the target fall back to its default size, which is
+/// how a B5 job turned into an A4 page. `media` carries the same information in
+/// the portable IPP form and is mapped by CUPS itself.
+fn forwarded_attrs(attrs: &[Attr]) -> Vec<Attr> {
+    let has_media = attrs.iter().any(|a| a.name == "media");
+    attrs
+        .iter()
+        .filter(|a| !NO_FORWARD.contains(&a.name.as_str()))
+        .filter(|a| !(has_media && a.name == "PageSize"))
+        .cloned()
+        .collect()
+}
+
 fn forward(ctx: &Ctx, file: &str, name: &str, user: &str, attrs: &[Attr]) -> Result<i32, String> {
     let data = std::fs::read(file).map_err(|e| e.to_string())?;
     let mut msg = Msg::new(ipp::OP_PRINT_JOB, 1);
@@ -1752,11 +1771,7 @@ fn forward(ctx: &Ctx, file: &str, name: &str, user: &str, attrs: &[Attr]) -> Res
             Attr::str(ipp::T_MIME, "document-format", "application/pdf"),
         ],
     });
-    let mut fwd: Vec<Attr> = attrs
-        .iter()
-        .filter(|a| !NO_FORWARD.contains(&a.name.as_str()))
-        .cloned()
-        .collect();
+    let mut fwd = forwarded_attrs(attrs);
     fwd.push(Attr::str(ipp::T_KEYWORD, "sides", "one-sided"));
     msg.groups.push(Group {
         tag: ipp::G_JOB,
@@ -1888,5 +1903,33 @@ fn wait_remote(ctx: &Ctx, id: i32, remote_id: i32) -> Result<(), String> {
             }
         }
         std::thread::sleep(Duration::from_secs(ctx.cfg.poll));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_clients_ppd_option_names_are_not_forwarded() {
+        let attrs = vec![
+            Attr::str(ipp::T_KEYWORD, "media", "iso_b5_176x250mm"),
+            Attr::str(ipp::T_NAME, "PageSize", "ISOB5"),
+            Attr::str(ipp::T_NAME, "ColorModel", "Gray"),
+            Attr::int(ipp::T_INTEGER, "copies", 2),
+        ];
+        let forwarded = forwarded_attrs(&attrs);
+        let names: Vec<&str> = forwarded.iter().map(|a| a.name.as_str()).collect();
+        assert!(names.contains(&"media"));
+        assert!(!names.contains(&"PageSize"), "{names:?}");
+        // copies is ours to apply, and colour is still the target's business
+        assert!(!names.contains(&"copies"), "{names:?}");
+        assert!(names.contains(&"ColorModel"), "{names:?}");
+
+        // without media the page size would be lost, so it is kept
+        let only_page_size = vec![Attr::str(ipp::T_NAME, "PageSize", "ISOB5")];
+        let forwarded = forwarded_attrs(&only_page_size);
+        assert_eq!(forwarded.len(), 1);
+        assert_eq!(forwarded[0].name, "PageSize");
     }
 }
