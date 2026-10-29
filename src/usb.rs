@@ -14,8 +14,16 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Duration;
 
-/// The port `ipp-usb` serves IPP on.
+/// The first port `ipp-usb` will allocate (`http-min-port` in its config).
 pub const PORT: u16 = 60000;
+
+/// The last port worth probing.
+///
+/// ipp-usb allocates from [`PORT`] upwards until it finds a free one, and its
+/// stock configuration allows anything up to 65535. Scanning a thousand
+/// loopback ports costs a few tens of milliseconds (a closed port refuses at
+/// once), so the window can afford to look before deciding that nothing serves.
+pub const PORT_END: u16 = 61000;
 
 /// The program looked for in `PATH`.
 pub const PROGRAM: &str = "ipp-usb";
@@ -112,7 +120,23 @@ pub fn serving() -> bool {
 /// started, the printer is served on 60001, 60002, … and a check that only
 /// looks at 60000 would report "not serving" while it plainly is.
 pub fn serving_port() -> Option<u16> {
-    (PORT..PORT.saturating_add(16)).find(|port| serving_at("127.0.0.1", *port))
+    (PORT..=PORT_END).find(|port| serving_at("127.0.0.1", *port))
+}
+
+/// The ipp-usb port a device URI points at, when it points at one of ours.
+///
+/// Accepts both spellings CUPS may keep (`localhost` and `127.0.0.1`) and any
+/// port in the range ipp-usb allocates from.
+pub fn ipp_usb_port_of(device_uri: &str) -> Option<u16> {
+    let rest = device_uri
+        .strip_prefix("ipp://localhost:")
+        .or_else(|| device_uri.strip_prefix("ipp://127.0.0.1:"))?;
+    let (port, path) = rest.split_once('/')?;
+    if !path.starts_with("ipp/print") {
+        return None;
+    }
+    let port: u16 = port.parse().ok()?;
+    (PORT..=PORT_END).contains(&port).then_some(port)
 }
 
 /// [`serving`] for any host and port, so tests can stand up a listener.
@@ -301,5 +325,26 @@ mod tests {
         assert_eq!(attached("CN8BE790YY06MD"), None);
         std::env::remove_var(SYSFS_ENV);
         let _ = std::fs::remove_dir_all(&empty);
+    }
+    #[test]
+    fn an_ipp_usb_uri_names_its_port() {
+        assert_eq!(
+            ipp_usb_port_of("ipp://localhost:60000/ipp/print"),
+            Some(60000)
+        );
+        assert_eq!(
+            ipp_usb_port_of("ipp://127.0.0.1:60001/ipp/print"),
+            Some(60001)
+        );
+        assert_eq!(
+            ipp_usb_port_of("ipp://localhost:61000/ipp/print"),
+            Some(61000)
+        );
+        // outside the range ipp-usb allocates from
+        assert_eq!(ipp_usb_port_of("ipp://localhost:61001/ipp/print"), None);
+        // a local CUPS queue is not an ipp-usb endpoint
+        assert_eq!(ipp_usb_port_of("ipp://127.0.0.1:631/printers/x"), None);
+        // and the path has to be the one ipp-usb publishes
+        assert_eq!(ipp_usb_port_of("ipp://localhost:60000/other"), None);
     }
 }

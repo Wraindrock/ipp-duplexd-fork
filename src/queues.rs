@@ -95,6 +95,21 @@ pub fn ensure(name: &str, addr: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Point an existing queue at another device URI without touching its PPD.
+pub fn repoint(name: &str, uri: &str) -> Result<(), String> {
+    let args: Vec<String> = ["-p", name, "-E", "-v", uri]
+        .iter()
+        .map(|part| part.to_string())
+        .collect();
+    run_lpadmin(&args)?;
+    if !exists(name) {
+        return Err(format!(
+            "{LPSTAT} does not list '{name}' after repointing it"
+        ));
+    }
+    Ok(())
+}
+
 /// Delete the queue, if CUPS knows it. Returns whether anything was removed.
 pub fn remove(name: &str) -> Result<bool, String> {
     if !exists(name) {
@@ -498,5 +513,24 @@ mod tests {
         let ppd = ppd_text_at(&addr, "DeskJet-2600").unwrap();
         server.join().unwrap();
         assert_eq!(ppd, "*PPD-Adobe: \"4.3\"\n");
+    }
+    #[test]
+    fn repointing_keeps_the_queue_and_changes_only_the_device() {
+        let _guard = guard();
+        let dir = tempdir("repoint");
+        let log = dir.join("lpadmin-args");
+        let lpadmin = recording_lpadmin(&dir, &log, "exit 0");
+        let lpstat = stub(&dir, "lpstat", "exit 0");
+        std::env::set_var(LPADMIN_ENV, &lpadmin);
+        std::env::set_var(LPSTAT_ENV, &lpstat);
+        repoint("DeskJet-2600", "ipp://localhost:60001/ipp/print").unwrap();
+        std::env::remove_var(LPADMIN_ENV);
+        std::env::remove_var(LPSTAT_ENV);
+        let args = std::fs::read_to_string(&log).unwrap();
+        assert!(args.contains("-p DeskJet-2600"), "{args}");
+        assert!(args.contains("ipp://localhost:60001/ipp/print"), "{args}");
+        // no model: the PPD the queue already has must be kept
+        assert!(!args.contains("-m"), "{args}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

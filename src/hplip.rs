@@ -143,9 +143,7 @@ pub fn driver(real: &str, queues: &[Discovered]) -> Option<Driver> {
     if is_hplip_usb(device_uri) {
         return Some(Driver::Hplip);
     }
-    let ipp_usb = format!("ipp://localhost:{}/", crate::usb::PORT);
-    let ipp_usb_v4 = format!("ipp://127.0.0.1:{}/", crate::usb::PORT);
-    (device_uri.starts_with(&ipp_usb) || device_uri.starts_with(&ipp_usb_v4)).then_some(Driver::Ipp)
+    crate::usb::ipp_usb_port_of(device_uri).map(|_| Driver::Ipp)
 }
 
 #[cfg(test)]
@@ -253,11 +251,13 @@ mod tests {
         let queues = vec![
             queue("a", Some("hp:/usb/DeskJet_2600_series?serial=X")),
             queue("b", Some("ipp://localhost:60000/ipp/print")),
+            queue("d", Some("ipp://localhost:60001/ipp/print")),
             queue("c", Some("ipp://127.0.0.1:631/printers/x")),
         ];
         let of = |name: &str| driver(&format!("ipp://127.0.0.1:631/printers/{name}"), &queues);
         assert_eq!(of("a"), Some(Driver::Hplip));
         assert_eq!(of("b"), Some(Driver::Ipp));
+        assert_eq!(of("d"), Some(Driver::Ipp));
         assert_eq!(of("c"), None);
         assert_eq!(of("missing"), None);
     }
