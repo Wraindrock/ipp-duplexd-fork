@@ -477,9 +477,9 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
     let mut listen = "127.0.0.1:6632".to_string();
     let mut printer = None;
     let mut name = "manual-duplex".to_string();
-    let mut blank = "leading".to_string();
+    let mut blank = "none".to_string();
     let mut auto_continue = 0u64;
-    let mut rotate_even = 180u32;
+    let mut rotate_even = 0u32;
     let mut poll = 2u64;
     let mut gui = true;
     let mut settle = 10u64;

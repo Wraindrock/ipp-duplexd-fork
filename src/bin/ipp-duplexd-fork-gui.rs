@@ -1898,11 +1898,13 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                 return;
             }
             let mut candidate = state.config.borrow().clone();
+            let previous_name = index.map(|index| candidate.printers[index].name.clone());
             let mut printer = match index {
                 Some(index) => candidate.printers[index].clone(),
                 None => cfg_file::Printer::new("", "", ""),
             };
             printer.name = name.text().to_string();
+            let new_name = printer.name.clone();
             printer.listen = listen.text().to_string();
             printer.real = real.text().to_string();
             printer.blank = blank_value(blank.selected()).to_string();
@@ -1924,6 +1926,14 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
             }
             state.config.replace(candidate);
             commit(&state);
+            // A renamed virtual printer has to take its CUPS queue with it:
+            // commit() registers the new one, and the old one would otherwise
+            // stay in the desktop's printer list forever.
+            if let Some(previous) = previous_name {
+                if previous != new_name {
+                    let _ = queues::remove(&previous);
+                }
+            }
         });
     }
 

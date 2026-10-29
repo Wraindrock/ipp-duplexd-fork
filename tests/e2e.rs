@@ -515,7 +515,12 @@ fn printer_attributes_proxied_and_mirrored() {
 
 #[test]
 fn duplex_splits_pads_and_rotates() {
-    let t = setup("duplex", &["--no-gui"], None);
+    // the padding and the rotation are options now, not defaults
+    let t = setup(
+        "duplex",
+        &["--no-gui", "--blank", "leading", "--rotate-even", "180"],
+        None,
+    );
     let jid = print_job(
         t.port,
         &make_pdf(5),
@@ -628,7 +633,11 @@ fn gui_dialog_continues_job() {
         bin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let t = setup("gui-daemon", &[], Some(&path));
+    let t = setup(
+        "gui-daemon",
+        &["--blank", "leading", "--rotate-even", "180"],
+        Some(&path),
+    );
     let jid = print_job(
         t.port,
         &make_pdf(5),
