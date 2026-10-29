@@ -151,11 +151,11 @@ fn main() {
             daemon_args += " --no-gui";
             gui = false;
         }
-        if !confirm(&t!("setup.ask.rotate"), true) {
+        if !confirm(&t!("setup.ask.rotate"), false) {
             daemon_args += " --rotate-even 0";
         }
-        let blank = ask(&t!("setup.ask.blank"), "leading");
-        if blank != "leading" {
+        let blank = ask(&t!("setup.ask.blank"), "none");
+        if blank != "none" {
             daemon_args += &format!(" --blank {blank}");
         }
     }

@@ -58,7 +58,9 @@ pub struct Printer {
 }
 
 fn blank_default() -> String {
-    "leading".to_string()
+    // Keep blank pages unless asked otherwise: padding an odd page count into
+    // the even pass is a fix for a specific symptom, not a safe default.
+    "none".to_string()
 }
 
 fn settle_default() -> u64 {
@@ -70,7 +72,9 @@ fn poll_default() -> u64 {
 }
 
 fn rotate_default() -> u32 {
-    180
+    // Rotating the backs is for printers that stack paper the other way round;
+    // a new printer should come out the way every other printer does.
+    0
 }
 
 fn gui_default() -> bool {
@@ -335,10 +339,10 @@ real = "ipp://127.0.0.1:631/printers/laser"
 "#;
         let config = Config::parse(text, Path::new("config.toml"), "en").expect("parse");
         let printer = &config.printers[0];
-        assert_eq!(printer.blank, "leading");
+        assert_eq!(printer.blank, "none");
         assert_eq!(printer.settle, 10);
         assert_eq!(printer.poll, 2);
-        assert_eq!(printer.rotate_even, 180);
+        assert_eq!(printer.rotate_even, 0);
         assert_eq!(printer.auto_continue, 0);
         assert!(printer.gui);
         assert_eq!(config.settings.language, None);

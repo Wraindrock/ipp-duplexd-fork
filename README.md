@@ -441,10 +441,10 @@ language = "zh-CN"          # optional; defaults to the environment
 name = "manual-duplex"
 listen = "127.0.0.1:6632"
 real = "ipp://127.0.0.1:631/printers/laser"
-blank = "leading"           # leading, trailing or none
+blank = "none"              # leading, trailing or none
 settle = 10
 poll = 2
-rotate_even = 180
+rotate_even = 0
 auto_continue = 0           # 0 = wait for GET /flip
 gui = true
 
@@ -610,10 +610,10 @@ cargo test
 | `--printer URI` | (required) | Real printer: `ipp://host[:port]/path` |
 | `--listen ADDR:PORT` | `127.0.0.1:6632` | Listen address (warns if non-loopback) |
 | `--name NAME` | `manual-duplex` | Printer name to advertise |
-| `--blank WHERE` | `leading` | Blank-page padding of the even pass for odd page counts: `leading`, `trailing`, `none`. Switch if the last page of odd-count documents lands on the wrong sheet. |
+| `--blank WHERE` | `none` | Blank-page padding of the even pass for odd page counts: `leading`, `trailing`, `none`. Switch if the last page of odd-count documents lands on the wrong sheet. |
 | `--auto-continue N` | off | Print the backs N seconds after the odd pass finishes instead of waiting for `/flip` (takes precedence over `--gui`) |
 | `--no-gui` | (gui on) | Disable the flip dialog. By default the GTK4 window shipped with the packages (then zenity, kdialog, or xmessage — first one that runs) opens when it is time to flip; clicking OK prints the backs. `/flip` keeps working in parallel; a dismissed or failed dialog never cancels the job, and without any dialog tool ipp-duplexd-fork just waits for `/flip`. |
-| `--rotate-even 0\|180` | `180` | Rotation of the even pages; set to `0` if the backs come out upside down for your flip direction |
+| `--rotate-even 0\|180` | `0` | Rotation of the even pages; set to `0` if the backs come out upside down for your flip direction |
 | `--poll N` | `2` | Seconds between job-state polls of the real printer |
 | `--settle N` | `10` | Seconds to give the real printer to finish and reset after the odd pass. The backs are only sent once it reports `printer-state=idle`; if it stays busy or unreachable for `N` seconds they are sent anyway, and a transient rejection is retried. `0` sends them straight away. |
 | `--lang CODE` | from the environment | Language of the messages and the status page (`en`, `zh-CN`); see [Languages](#languages) |
