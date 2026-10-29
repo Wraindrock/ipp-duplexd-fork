@@ -280,9 +280,10 @@ lp -o PageSize=ISOB5 → [attrs] PageSize = ISOB5   (没有 media)
 
 ## 现状（2026-10-29 收尾）
 
-- 最新发布：`v2026.10.29-8`（AppImage、deb、rpm、Arch 包；dnf 仓库每次发版自动重建）
+- 最新发布：`v2026.10.29-9`（AppImage、deb、rpm、Arch 包；dnf 仓库每次发版自动重建）
 - **所有 issue 都已关闭**：#1、#2、#3、#4、#5（提案，驳回）、#8、#11、#14
-- 最后一版 #14 做的事：识别"`ipp-usb` 服务在跑、60000 却不应答、真机队列是 `hp:/usb/…`"这个状态，行内说明并给一个按钮，问是"重启 ipp-usb"（优先，回来后就能切 driverless）还是"停用它、改用 hplip"；两条都走 `pkexec`，窗口不阻塞。每行还会标出当前驱动（`· IPP` / `· hplip`）
+- 最后一版加的：每条 `hp:/usb/…` 队列都有一个"切回 IPP"按钮（ipp-usb 没在跑就先经 pkexec 启动它，再切队列、保留旧 URI/PPD）；`lpadmin` 注册队列改到后台线程，窗口不再像卡死，注册时有一个转圈的提示。
+- #14 做的事：识别"`ipp-usb` 服务在跑、60000 却不应答、真机队列是 `hp:/usb/…`"这个状态，行内说明并给一个按钮，问是"重启 ipp-usb"（优先，回来后就能切 driverless）还是"停用它、改用 hplip"；两条都走 `pkexec`，窗口不阻塞。每行还会标出当前驱动（`· IPP` / `· hplip`）
 - 本机（bluefin）：AppImage 已是最新；`DeskJet-2600` 队列是 driverless，指向 `ipp://localhost:60000/ipp/print`
 - 另一台（192.168.1.12）：ipp-usb 会"占着设备但不监听 60000"。升级到 -8 后窗口会直接给出上面那两个按钮，不再需要手动 `systemctl stop ipp-usb`
 
