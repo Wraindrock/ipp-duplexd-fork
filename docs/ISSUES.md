@@ -280,7 +280,7 @@ lp -o PageSize=ISOB5 → [attrs] PageSize = ISOB5   (没有 media)
 
 ## 现状（2026-10-29 收尾）
 
-- 最新发布：`v2026.10.29-9`（AppImage、deb、rpm、Arch 包；dnf 仓库每次发版自动重建）
+- 最新发布：`v2026.10.29-11`（AppImage、deb、rpm、Arch 包；dnf 仓库每次发版自动重建）
 - **所有 issue 都已关闭**：#1、#2、#3、#4、#5（提案，驳回）、#8、#11、#14
 - 最后一版加的：每条 `hp:/usb/…` 队列都有一个"切回 IPP"按钮（ipp-usb 没在跑就先经 pkexec 启动它，再切队列、保留旧 URI/PPD）；`lpadmin` 注册队列改到后台线程，窗口不再像卡死，注册时有一个转圈的提示。
 - #14 做的事：识别"`ipp-usb` 服务在跑、60000 却不应答、真机队列是 `hp:/usb/…`"这个状态，行内说明并给一个按钮，问是"重启 ipp-usb"（优先，回来后就能切 driverless）还是"停用它、改用 hplip"；两条都走 `pkexec`，窗口不阻塞。每行还会标出当前驱动（`· IPP` / `· hplip`）
@@ -291,3 +291,5 @@ lp -o PageSize=ISOB5 → [attrs] PageSize = ISOB5   (没有 media)
 
 - CUPS 对连续失败的队列会自动 `disable`，`cupsenable <queue>` 能恢复；卡住的 `hp` 后端要 `systemctl restart cups` 才清掉
 - 打印对话框只发 PPD 选项名、不发 `media`，守护进程现在会翻译（`media_keyword_of`），新增打印机 PPD 若引入表中没有的尺寸名，需要往表里补一条
+
+补充（2026-10-29 晚）：调试机器是一台 KVM 虚拟机，打印机通过 USB 直通在**宿主机和虚拟机之间切换**——因此"ipp-usb 在跑但 60000 没监听"有两种完全不同的原因：ipp-usb 坏了，或者打印机此刻根本不在这一台机器上。`v2026.10.29-11` 起按 `device-uri` 里的序列号去 `/sys/bus/usb/devices` 查，找不到就在行内写"这台机器上没有接这台打印机（USB 可能切给另一台了）"，并且不再给"修复 ipp-usb"的按钮。
