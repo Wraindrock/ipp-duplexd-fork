@@ -755,6 +755,7 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
     // them to ipp-usb instead (hplip stays installed).
     let known_queues = discover::cups_printers().unwrap_or_default();
     let ipp_usb = usb::serving();
+    let ipp_usb_active = usb::service_active();
 
     let printers: Vec<(String, String, String)> = state
         .config
@@ -783,6 +784,8 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
 
     for (index, (name, listen, real)) in printers.iter().enumerate() {
         let conflict = hplip::conflict_for(real, &known_queues, ipp_usb);
+        let stuck = hplip::stuck(real, &known_queues, ipp_usb_active, ipp_usb);
+        let driver = hplip::driver(real, &known_queues);
         let state_text = match gui::printer_state_at(listen) {
             Some(3) => l10n::text(locale, "gui.window.state_idle"),
             Some(4) => l10n::text(locale, "gui.window.state_busy"),
@@ -790,6 +793,18 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             None => l10n::text(locale, "gui.window.state_unknown"),
         };
         let mut subtitle = format!("{} · {state_text}", gui::short_real(real));
+        if let Some(driver) = driver {
+            subtitle.push_str(" · ");
+            subtitle.push_str(&driver_label(locale, driver));
+        }
+        if let Some(queue) = &stuck {
+            subtitle.push('\n');
+            subtitle.push_str(&l10n::tr(
+                locale,
+                "gui.window.ipp_usb_hint",
+                &[("queue", queue.clone())],
+            ));
+        }
         if let Some(conflict) = &conflict {
             subtitle.push('\n');
             subtitle.push_str(&l10n::tr(
@@ -803,9 +818,21 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             .subtitle(&subtitle)
             .build();
         row.set_tooltip_text(Some(&gui::row_detail(locale, listen, real)));
-        row.set_subtitle_lines(if conflict.is_some() { 2 } else { 1 });
+        row.set_subtitle_lines(if conflict.is_some() || stuck.is_some() {
+            2
+        } else {
+            1
+        });
 
-        if let Some(conflict) = conflict.clone() {
+        if let Some(queue) = stuck.clone() {
+            let fix = icon_button("dialog-warning-symbolic", &labels.ipp_usb_tooltip);
+            fix.add_css_class("warning");
+            {
+                let state = state.clone();
+                fix.connect_clicked(move |_| confirm_ipp_usb_fix(&state, &queue));
+            }
+            row.add_suffix(&fix);
+        } else if let Some(conflict) = conflict.clone() {
             let fix = icon_button("dialog-warning-symbolic", &labels.hplip_tooltip);
             fix.add_css_class("warning");
             {
@@ -964,6 +991,88 @@ fn cancel_job(state: &Rc<State>, addr: &str, id: i32) {
             ),
         ),
     }
+}
+
+/// How the real printer is driven, as a word for the row.
+fn driver_label(locale: &str, driver: hplip::Driver) -> String {
+    match driver {
+        hplip::Driver::Ipp => l10n::text(locale, "gui.window.driver_ipp"),
+        hplip::Driver::Hplip => l10n::text(locale, "gui.window.driver_hplip"),
+    }
+}
+
+/// ipp-usb is running but nothing answers: neither path can print. Offer the two
+/// ways out, both of which need the user's authorisation through polkit.
+fn confirm_ipp_usb_fix(state: &Rc<State>, queue: &str) {
+    let locale = state.locale.get();
+    let labels = gui::window_labels(locale);
+    let dialog = adw::AlertDialog::builder()
+        .heading(&labels.ipp_usb_title)
+        .body(l10n::tr(
+            locale,
+            "gui.window.ipp_usb_body",
+            &[("queue", queue.to_string())],
+        ))
+        .build();
+    dialog.add_response("cancel", &labels.cancel);
+    dialog.add_response("restart", &labels.ipp_usb_restart);
+    dialog.add_response("stop", &labels.ipp_usb_stop);
+    dialog.set_response_appearance("restart", adw::ResponseAppearance::Suggested);
+    dialog.set_close_response("cancel");
+    {
+        let state = state.clone();
+        dialog.connect_response(None, move |_, response| match response {
+            "restart" => run_ipp_usb(&state, &["systemctl", "restart", "ipp-usb"]),
+            "stop" => run_ipp_usb(&state, &["systemctl", "stop", "ipp-usb"]),
+            _ => {}
+        });
+    }
+    dialog.present(Some(&state.window));
+}
+
+/// Run a privileged command through `pkexec` and watch for it to finish, so the
+/// window does not freeze while the authorisation dialog is up.
+fn run_ipp_usb(state: &Rc<State>, command: &[&str]) {
+    let locale = state.locale.get();
+    let action = command.join(" ");
+    let mut child = match Command::new("pkexec").args(command).spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            toast(
+                state,
+                &l10n::tr(
+                    locale,
+                    "gui.window.ipp_usb_failed",
+                    &[("action", action), ("err", e.to_string())],
+                ),
+            );
+            return;
+        }
+    };
+    let state = state.clone();
+    glib::timeout_add_local(Duration::from_millis(300), move || match child.try_wait() {
+        Ok(Some(status)) => {
+            let locale = state.locale.get();
+            if !status.success() {
+                toast(
+                    &state,
+                    &l10n::tr(
+                        locale,
+                        "gui.window.ipp_usb_failed",
+                        &[("action", action.clone()), ("err", format!("{status}"))],
+                    ),
+                );
+            } else if usb::serving() {
+                toast(&state, &l10n::text(locale, "gui.window.ipp_usb_serving"));
+            } else {
+                toast(&state, &l10n::text(locale, "gui.window.ipp_usb_stopped"));
+            }
+            rebuild(&state);
+            glib::ControlFlow::Break
+        }
+        Ok(None) => glib::ControlFlow::Continue,
+        Err(_) => glib::ControlFlow::Break,
+    });
 }
 
 /// Offer to point a hplip queue at ipp-usb. Nothing is uninstalled: the old
