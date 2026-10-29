@@ -463,5 +463,4 @@ note = "flip the stack face down"
         let bare_text = bare.render().expect("render");
         assert!(!bare_text.contains("note"), "{bare_text}");
     }
-
 }

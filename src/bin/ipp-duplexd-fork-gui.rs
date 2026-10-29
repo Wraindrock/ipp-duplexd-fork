@@ -1735,6 +1735,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                         let name = name.clone();
                         let listen = listen.clone();
                         let real = real.clone();
+                        let note = note.clone();
                         let advanced = advanced.clone();
                         let names = names.clone();
                         let listens = listens.clone();

@@ -995,5 +995,4 @@ mod tests {
         assert!(noted.starts_with(&plain), "{noted}");
         assert!(noted.ends_with("face down, long edge away"), "{noted}");
     }
-
 }
