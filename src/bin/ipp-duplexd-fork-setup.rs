@@ -421,7 +421,10 @@ fn switch_driver(config: &Config, index: usize) {
             println!("{}", t!("gui.window.ipp_usb_still_down"));
             return;
         };
-        if !confirm(&t!("gui.window.ipp_recover_title", queue = queue.clone()), true) {
+        if !confirm(
+            &t!("gui.window.ipp_recover_title", queue = queue.clone()),
+            true,
+        ) {
             return;
         }
         match queues::ppd_text(&queue).and_then(|ppd| {
@@ -437,11 +440,19 @@ fn switch_driver(config: &Config, index: usize) {
             match queues::restore(&queue, &dir) {
                 Ok(device) => println!(
                     "{}",
-                    l10n::tr(lang(), "gui.window.hplip_restored", &[("queue", queue), ("device", device)])
+                    l10n::tr(
+                        lang(),
+                        "gui.window.hplip_restored",
+                        &[("queue", queue), ("device", device)]
+                    )
                 ),
                 Err(e) => println!(
                     "{}",
-                    l10n::tr(lang(), "gui.window.hplip_restore_failed", &[("queue", queue), ("err", e)])
+                    l10n::tr(
+                        lang(),
+                        "gui.window.hplip_restore_failed",
+                        &[("queue", queue), ("err", e)]
+                    )
                 ),
             }
             return;
