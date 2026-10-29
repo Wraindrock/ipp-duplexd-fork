@@ -397,9 +397,6 @@ fn build_page(state: &Rc<State>) -> adw::PreferencesPage {
         page.add(&setup_group(state, &labels));
     }
     page.add(&printers_group(state, &labels));
-    if let Some(group) = hplip_backups_group(state, &labels) {
-        page.add(&group);
-    }
     page.add(&service_group(state, &labels));
     page.add(&diagnostics_group(state, &labels));
     page.add(&settings_group(state, &labels));
@@ -746,18 +743,24 @@ fn printers_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::Prefere
             1
         });
 
-        if let Some((queue, device)) = hplip_queue {
-            if !absent && usb::installed() {
-                // Always leave a way back to the driverless path: starting
-                // ipp-usb first when it is not answering.
-                let recover =
-                    icon_button("emblem-synchronizing-symbolic", &labels.ipp_recover_tooltip);
-                {
-                    let state = state.clone();
-                    recover
+        // One button with one meaning: put this queue on the other driver.
+        // Which way that is follows from the driver in use, not from a choice
+        // the user has to make between "switch away" and "switch back".
+        {
+            let queue = hplip::queue_of_real(real).unwrap_or_default();
+            let driverless = driver == Some(hplip::Driver::Ipp)
+                && queues::has_backup(&service::data_dir(), &queue);
+            let hplip_side = hplip_queue.filter(|_| usb::installed());
+            if !absent && (hplip_side.is_some() || driverless) {
+                let switch = icon_button("emblem-synchronizing-symbolic", &labels.switch_tooltip);
+                let state = state.clone();
+                if let Some((_, device)) = hplip_side {
+                    switch
                         .connect_clicked(move |_| confirm_recover_to_ipp(&state, &queue, &device));
+                } else {
+                    switch.connect_clicked(move |_| restore_hplip_queue(&state, &queue));
                 }
-                row.add_suffix(&recover);
+                row.add_suffix(&switch);
             }
         }
 
@@ -1064,44 +1067,6 @@ fn switch_queue_to_ipp_usb(state: &Rc<State>, conflict: &hplip::Conflict) {
             show_text(state, &title, &body);
         }
     }
-}
-
-/// The queues that were moved off hplip and can be put back.
-fn hplip_backups_group(
-    state: &Rc<State>,
-    labels: &gui::WindowLabels,
-) -> Option<adw::PreferencesGroup> {
-    let dir = service::data_dir();
-    let saved = queues::backups(&dir);
-    if saved.is_empty() {
-        return None;
-    }
-    let locale = state.locale.get();
-    let group = adw::PreferencesGroup::new();
-    group.set_title(&labels.hplip_backup_title);
-    for queue in saved {
-        let device =
-            std::fs::read_to_string(queues::backup_device(&dir, &queue)).unwrap_or_default();
-        let row = adw::ActionRow::builder()
-            .title(&queue)
-            .subtitle(l10n::tr(
-                locale,
-                "gui.window.hplip_backup_subtitle",
-                &[("device", device.trim().to_string())],
-            ))
-            .build();
-        row.set_subtitle_lines(2);
-        let restore = gtk::Button::with_label(&labels.hplip_restore);
-        restore.add_css_class("flat");
-        {
-            let state = state.clone();
-            let queue = queue.clone();
-            restore.connect_clicked(move |_| restore_hplip_queue(&state, &queue));
-        }
-        row.add_suffix(&restore);
-        group.add(&row);
-    }
-    Some(group)
 }
 
 fn restore_hplip_queue(state: &Rc<State>, queue: &str) {

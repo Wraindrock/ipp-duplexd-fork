@@ -412,27 +412,41 @@ fn status(config: &Config, index: usize) {
 fn switch_driver(config: &Config, index: usize) {
     let printer = &config.printers[index];
     let known = discover::cups_printers().unwrap_or_default();
-    let Some((queue, device)) = hplip::queue_and_device(&printer.real, &known) else {
-        println!("{}", t!("tui.driver.none"));
-        return;
-    };
-    let Some(port) = usb::serving_port() else {
-        println!("{}", t!("gui.window.ipp_usb_still_down"));
-        return;
-    };
-    if !confirm(
-        &t!("gui.window.ipp_recover_title", queue = queue.clone()),
-        true,
-    ) {
-        return;
-    }
     let dir = service::data_dir();
-    match queues::ppd_text(&queue).and_then(|ppd| {
-        queues::switch_to_ipp_usb(&queue, &device, &ppd, &hplip::ipp_usb_uri(port), &dir)
-    }) {
-        Ok(()) => println!("{}", t!("gui.window.hplip_done", queue = queue)),
-        Err(e) => println!("{}", t!("gui.window.hplip_failed", queue = queue, err = e)),
+    // One action: put the queue on the other driver. Which way that is follows
+    // from the driver in use -- same rule as the window's single button.
+    if let Some((queue, device)) = hplip::queue_and_device(&printer.real, &known) {
+        let Some(port) = usb::serving_port() else {
+            println!("{}", t!("gui.window.ipp_usb_still_down"));
+            return;
+        };
+        if !confirm(&t!("gui.window.ipp_recover_title", queue = queue.clone()), true) {
+            return;
+        }
+        match queues::ppd_text(&queue).and_then(|ppd| {
+            queues::switch_to_ipp_usb(&queue, &device, &ppd, &hplip::ipp_usb_uri(port), &dir)
+        }) {
+            Ok(()) => println!("{}", t!("gui.window.hplip_done", queue = queue)),
+            Err(e) => println!("{}", t!("gui.window.hplip_failed", queue = queue, err = e)),
+        }
+        return;
     }
+    if let Some(queue) = hplip::queue_of_real(&printer.real) {
+        if queues::has_backup(&dir, &queue) {
+            match queues::restore(&queue, &dir) {
+                Ok(device) => println!(
+                    "{}",
+                    l10n::tr(lang(), "gui.window.hplip_restored", &[("queue", queue), ("device", device)])
+                ),
+                Err(e) => println!(
+                    "{}",
+                    l10n::tr(lang(), "gui.window.hplip_restore_failed", &[("queue", queue), ("err", e)])
+                ),
+            }
+            return;
+        }
+    }
+    println!("{}", t!("tui.driver.none"));
 }
 
 // ---------------------------------------------------------------------- jobs
