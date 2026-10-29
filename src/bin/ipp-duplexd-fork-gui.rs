@@ -561,11 +561,11 @@ fn diagnostics_text(state: &Rc<State>) -> String {
         }
         Err(e) => out.push_str(&format!("unit file: {e}\n")),
     }
-    out.push_str("\n--- systemctl --user status ---\n");
+    out.push_str("\n\n--- systemctl --user status ---\n");
     out.push_str(&service::status_text());
-    out.push_str("\n--- journal ---\n");
+    out.push_str("\n\n--- journal ---\n");
     out.push_str(&service::journal_text(80));
-    out.push_str("\n--- virtual printers ---\n");
+    out.push_str("\n\n--- virtual printers ---\n");
     let printers: Vec<(String, String, String)> = state
         .config
         .borrow()
@@ -633,16 +633,24 @@ fn show_text(state: &Rc<State>, title: &str, body: &str) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);
 
-    let label = gtk::Label::new(Some(body));
-    label.set_wrap(true);
-    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    label.set_selectable(true);
-    label.set_xalign(0.0);
-    label.set_valign(gtk::Align::Start);
-    let scroller = gtk::ScrolledWindow::new();
-    scroller.set_child(Some(&label));
-    scroller.set_min_content_height(340);
-    scroller.set_min_content_width(620);
+    // A real text view, not a wrapped label: these are several blocks of
+    // different shapes (unit file, systemctl status, journal lines) and a label
+    // reflows all of them into one ragged column.
+    let view = gtk::TextView::new();
+    view.set_editable(false);
+    view.set_cursor_visible(false);
+    view.set_monospace(true);
+    view.set_wrap_mode(gtk::WrapMode::WordChar);
+    view.set_left_margin(12);
+    view.set_right_margin(12);
+    view.set_top_margin(10);
+    view.set_bottom_margin(10);
+    view.buffer().set_text(body);
+    let scroller = gtk::ScrolledWindow::builder()
+        .child(&view)
+        .min_content_width(700)
+        .min_content_height(430)
+        .build();
     scroller.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
 
     let body_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -1541,6 +1549,15 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                 Err(err) => (Vec::new(), Some(err)),
             };
             let nothing_found = detected.is_empty();
+
+            // Created before the list so picking a printer can open it: the
+            // fields are the point of picking one, not a shortcut past them.
+            let advanced = adw::ExpanderRow::builder()
+                .title(&labels.advanced)
+                .subtitle(&labels.advanced_hint)
+                .build();
+            advanced.set_expanded(nothing_found);
+
             let group = adw::PreferencesGroup::builder()
                 .title(&labels.detected_title)
                 .build();
@@ -1558,6 +1575,20 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                 group.add(&row);
             } else {
                 group.set_description(Some(&labels.detected_hint));
+                let names: Vec<String> = state
+                    .config
+                    .borrow()
+                    .printers
+                    .iter()
+                    .map(|printer| printer.name.clone())
+                    .collect();
+                let listens: Vec<String> = state
+                    .config
+                    .borrow()
+                    .printers
+                    .iter()
+                    .map(|printer| printer.listen.clone())
+                    .collect();
                 for entry in detected {
                     let row = adw::ActionRow::builder()
                         .title(&entry.queue)
@@ -1565,22 +1596,29 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                         .activatable(true)
                         .build();
                     row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
-                    let state = state.clone();
-                    let dialog = dialog.clone();
-                    row.connect_activated(move |_| {
-                        add_detected(&state, &entry);
-                        dialog.close();
-                    });
+                    {
+                        let name = name.clone();
+                        let listen = listen.clone();
+                        let real = real.clone();
+                        let advanced = advanced.clone();
+                        let names = names.clone();
+                        let listens = listens.clone();
+                        row.connect_activated(move |_| {
+                            // Fill the form and open the fields, so the name,
+                            // address and the printing knobs can be changed
+                            // before the printer is saved.
+                            let printer = gui::printer_from_detected(&entry, &names, &listens);
+                            name.set_text(&printer.name);
+                            listen.set_text(&printer.listen);
+                            real.set_text(&printer.real);
+                            advanced.set_expanded(true);
+                        });
+                    }
                     group.add(&row);
                 }
             }
             body.append(&group);
 
-            let advanced = adw::ExpanderRow::builder()
-                .title(&labels.advanced)
-                .subtitle(&labels.advanced_hint)
-                .build();
-            advanced.set_expanded(nothing_found);
             advanced.add_row(&name);
             advanced.add_row(&listen);
             advanced.add_row(&real);
@@ -1636,32 +1674,6 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
 
 /// Add one detected queue: a unique name, the next free address, and the queue
 /// as the printer to forward to.
-fn add_detected(state: &Rc<State>, detected: &discover::Discovered) {
-    let locale = state.locale.get();
-    let mut candidate = state.config.borrow().clone();
-    let names: Vec<String> = candidate
-        .printers
-        .iter()
-        .map(|printer| printer.name.clone())
-        .collect();
-    let listens: Vec<String> = candidate
-        .printers
-        .iter()
-        .map(|printer| printer.listen.clone())
-        .collect();
-    candidate
-        .printers
-        .push(gui::printer_from_detected(detected, &names, &listens));
-    if let Err(e) = candidate.validate(locale) {
-        toast(
-            state,
-            &l10n::tr(locale, "gui.window.save_failed", &[("err", e)]),
-        );
-        return;
-    }
-    state.config.replace(candidate);
-    commit(state);
-}
 fn confirm_remove(state: &Rc<State>, index: usize) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);
