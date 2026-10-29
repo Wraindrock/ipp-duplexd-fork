@@ -6,6 +6,9 @@ the primary front end: any operation that changes something is reachable there.
 The terminal front end stays for headless machines and for the installer, and
 it calls the same code, so the two cannot drift.
 
+When a change touches one of these nodes, [CHANGE-MAP](CHANGE-MAP.md) says what
+else has to move with it.
+
 Vocabulary used below:
 
 - **manager** — the window (`ipp-duplexd-fork-gui` with no arguments).
