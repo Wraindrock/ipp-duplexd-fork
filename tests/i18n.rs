@@ -117,7 +117,12 @@ fn looks_like_a_key(piece: &str) -> bool {
     !is_file_name
         && matches!(
             piece.split('.').next(),
-            Some("daemon") | Some("setup") | Some("gui") | Some("config") | Some("common")
+            Some("daemon")
+                | Some("setup")
+                | Some("gui")
+                | Some("config")
+                | Some("common")
+                | Some("tui")
         )
         && piece
             .chars()
@@ -531,16 +536,13 @@ fn the_setup_wizard_speaks_the_requested_language() {
     let out = setup(&["--help"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    assert!(
-        stdout.contains("set up the manual duplex virtual printer"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("terminal menu"), "{stdout}");
     assert!(stdout.contains("--lang CODE"), "{stdout}");
 
     let out = setup(&["--lang", "zh-CN", "--help"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    assert!(stdout.contains("配置手动双面虚拟打印机"), "{stdout}");
+    assert!(stdout.contains("终端菜单"), "{stdout}");
     assert!(stdout.contains("--lang CODE"), "{stdout}");
 
     let out = setup(&["--lang", "de-DE"]);

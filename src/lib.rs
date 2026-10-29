@@ -1,6 +1,7 @@
 //! ipp-duplexd-fork library surface: the IPP codec/client and the language
 //! handling, shared with the binaries and the integration tests.
 pub mod config;
+pub mod diagnostics;
 pub mod discover;
 pub mod gui;
 pub mod hplip;

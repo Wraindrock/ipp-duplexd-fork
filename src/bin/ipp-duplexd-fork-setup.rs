@@ -1,36 +1,34 @@
-//! Interactive setup for ipp-duplexd-fork: pick the real printer, write the config,
-//! enable the systemd user service, and register the virtual printer as a
-//! driverless CUPS queue.
+//! The terminal front end: the same tree the window shows, for machines with
+//! no desktop (and for scripts, via `--yes`).
 //!
-//! Every step can also be skipped or overridden with flags, and --yes runs
-//! non-interactively with defaults.
+//! It writes the same `config.toml` the window writes, through the same
+//! `config` / `queues` / `service` code, so the two front ends cannot drift
+//! apart; this file only owns the questions and the printing.
 
-use ipp_duplexd_fork::ipp::{self, Attr, Group, Msg};
+use ipp_duplexd_fork::config::{Config, Printer};
+use ipp_duplexd_fork::discover;
+use ipp_duplexd_fork::gui;
+use ipp_duplexd_fork::hplip;
 use ipp_duplexd_fork::l10n;
+use ipp_duplexd_fork::queues;
 use ipp_duplexd_fork::service;
+use ipp_duplexd_fork::usb;
 use rust_i18n::t;
 use std::io::{self, Write};
-use std::net::TcpStream;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
-use std::time::{Duration, Instant};
 
 rust_i18n::i18n!("locales", fallback = "en");
 
 static ASSUME_DEFAULTS: AtomicBool = AtomicBool::new(false);
 static LANG: OnceLock<&'static str> = OnceLock::new();
 
-/// The language everything in this run is printed in.
 fn lang() -> &'static str {
     LANG.get().copied().unwrap_or(l10n::FALLBACK)
 }
 
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
-    // The language has to be settled before anything else can be said about
-    // the remaining arguments, so pick it out first.
     match arg_value(&argv, "--lang") {
         Some(tag) => match l10n::normalize(&tag) {
             Some(code) => {
@@ -38,14 +36,14 @@ fn main() {
             }
             None => {
                 eprintln!(
-                    "{}",
-                    l10n::tr(
-                        l10n::FALLBACK,
+                    "{}\n{}",
+                    t!(
                         "setup.err.bad_lang",
-                        &[("lang", tag.clone()), ("list", l10n::describe_all())],
-                    )
+                        lang = tag,
+                        list = l10n::describe_all()
+                    ),
+                    t!("setup.usage")
                 );
-                eprint!("{}", l10n::text(l10n::FALLBACK, "setup.usage"));
                 std::process::exit(2);
             }
         },
@@ -54,28 +52,24 @@ fn main() {
             LANG.set(l10n::apply(code)).ok();
         }
     }
-
-    let mut printer_uri: Option<String> = None;
-    let mut queue_name: Option<String> = None;
-    let mut listen = "127.0.0.1:6632".to_string();
+    if argv.iter().any(|a| a == "-h" || a == "--help") {
+        print!("{}", t!("setup.usage"));
+        return;
+    }
+    let mut printer_uri = None;
+    let mut listen = None;
     let mut do_service = true;
     let mut do_queue = true;
-
     let mut args = argv.iter();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--printer" => printer_uri = args.next().cloned(),
-            "--queue" => queue_name = args.next().cloned(),
-            "--listen" => listen = args.next().cloned().unwrap_or(listen),
-            "--lang" => {
-                args.next(); // already handled above
-            }
+            "--listen" => listen = args.next().cloned(),
             "--no-service" => do_service = false,
             "--no-queue" => do_queue = false,
             "--yes" => ASSUME_DEFAULTS.store(true, Ordering::Relaxed),
-            "-h" | "--help" => {
-                print!("{}", t!("setup.usage"));
-                return;
+            "--lang" => {
+                args.next();
             }
             other => {
                 eprintln!(
@@ -87,451 +81,631 @@ fn main() {
             }
         }
     }
-
-    println!("{}", t!("setup.title"));
-    println!("=============================================");
-
-    // 1. prerequisites -----------------------------------------------------
-    if !have("qpdf") {
-        println!();
-        println!("{}", t!("setup.err.no_qpdf"));
-        println!("{}", t!("setup.err.no_qpdf_hint"));
-        if !confirm(&t!("setup.err.continue_anyway"), false) {
+    let mut config = match Config::load(&Config::path(), lang()) {
+        Ok(Some(config)) => config,
+        Ok(None) => Config::default(),
+        Err(e) => {
+            eprintln!("{e}");
             std::process::exit(1);
+        }
+    };
+    if printer_uri.is_some() || ASSUME_DEFAULTS.load(Ordering::Relaxed) {
+        // The scripted path: one printer, defaults everywhere else.
+        if let Err(e) = quick_setup(&mut config, printer_uri, listen, do_service, do_queue) {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    refresh_driverless_ports(&config);
+    menu(&mut config);
+}
+
+/// ipp-usb allocates its port from 60000 upwards; a driverless queue that
+/// pointed at an older one stops printing after a restart. Same fix as the
+/// window's, so the two front ends behave alike.
+fn refresh_driverless_ports(config: &Config) {
+    let Some(port) = usb::serving_port() else {
+        return;
+    };
+    let known = discover::cups_printers().unwrap_or_default();
+    for printer in &config.printers {
+        let Some(queue) = hplip::queue_of_real(&printer.real) else {
+            continue;
+        };
+        let Some(device) = known
+            .iter()
+            .find(|known| known.queue == queue)
+            .and_then(|known| known.device_uri.as_deref())
+        else {
+            continue;
+        };
+        let Some(pointed_at) = usb::ipp_usb_port_of(device) else {
+            continue;
+        };
+        if pointed_at == port {
+            continue;
+        }
+        match queues::repoint(&queue, &hplip::ipp_usb_uri(port)) {
+            Ok(()) => println!("{}", t!("gui.window.port_moved", port = port.to_string())),
+            Err(e) => println!(
+                "{}",
+                l10n::tr(
+                    lang(),
+                    "gui.window.queue_failed",
+                    &[("name", queue), ("err", e)]
+                )
+            ),
         }
     }
-    let daemon_bin = find_duplexd().unwrap_or_else(|| {
-        println!("{}", t!("setup.err.no_daemon"));
-        println!("{}", t!("setup.err.no_daemon_hint"));
-        std::process::exit(1);
-    });
+}
 
-    // 2. real printer ------------------------------------------------------
-    println!();
-    println!("{}", t!("setup.step.printer"));
-    let printer_uri = printer_uri.unwrap_or_else(choose_printer);
-    match ipp::parse_uri(&printer_uri) {
-        Err(e) => {
-            println!(
-                "{}",
-                t!("setup.printer.bad_uri", uri = printer_uri.as_str(), err = e)
-            );
-            std::process::exit(1);
-        }
-        Ok(uri) => match probe(&uri) {
-            Some(mm) => println!("{}", t!("setup.printer.found", model = mm)),
-            None => {
-                println!(
+/// Non-interactive setup, for `--yes` and `--printer`.
+fn quick_setup(
+    config: &mut Config,
+    printer_uri: Option<String>,
+    listen: Option<String>,
+    do_service: bool,
+    do_queue: bool,
+) -> Result<(), String> {
+    let detected = discover::cups_printers().unwrap_or_default();
+    let real = match printer_uri {
+        Some(uri) => uri,
+        None => detected
+            .first()
+            .map(|printer| printer.uri.clone())
+            .ok_or_else(|| t!("setup.err.no_printer").to_string())?,
+    };
+    let listen = listen.unwrap_or_else(|| next_free_listen(config));
+    let name = suggested_name(config, &detected, &real);
+    let printer = Printer::new(&name, &listen, &real);
+    config.printers.push(printer);
+    config.validate(lang())?;
+    config.save(&Config::path(), lang())?;
+    println!("{}", t!("gui.window.saved"));
+    if do_service {
+        start_service()?;
+    }
+    if do_queue {
+        register_queues(config, false);
+    }
+    Ok(())
+}
+
+fn menu(config: &mut Config) {
+    loop {
+        println!();
+        println!("{}", t!("tui.menu.title"));
+        println!("  {}", t!("tui.menu.printers"));
+        println!("  {}", t!("tui.menu.jobs"));
+        println!("  {}", t!("tui.menu.service"));
+        println!("  {}", t!("tui.menu.diagnostics"));
+        println!("  {}", t!("tui.menu.settings"));
+        println!("  {}", t!("tui.menu.quit"));
+        match ask(&t!("tui.prompt"), "") {
+            c if c == "1" => printers_menu(config),
+            c if c == "2" => jobs_menu(config),
+            c if c == "3" => service_menu(),
+            c if c == "4" => {
+                print!(
                     "{}",
-                    t!("setup.printer.no_answer", uri = printer_uri.as_str())
+                    ipp_duplexd_fork::diagnostics::text(&config.printers, lang())
                 );
-                println!("{}", t!("setup.printer.no_answer_hint"));
-                if !confirm(&t!("setup.printer.use_anyway"), true) {
-                    std::process::exit(1);
+            }
+            c if c == "5" => settings_menu(config),
+            c if c == "q" || c == "Q" || c.is_empty() => {
+                println!("{}", t!("tui.bye"));
+                return;
+            }
+            _ => println!("{}", t!("tui.invalid")),
+        }
+    }
+}
+
+// ------------------------------------------------------------------ printers
+
+fn printers_menu(config: &mut Config) {
+    loop {
+        println!();
+        println!("{}", t!("gui.window.printers_title"));
+        if config.printers.is_empty() {
+            println!("  {}", t!("gui.window.no_printers"));
+        }
+        let known = discover::cups_printers().unwrap_or_default();
+        for (i, printer) in config.printers.iter().enumerate() {
+            let state = match gui::printer_state_at(&printer.listen) {
+                Some(3) => l10n::text(lang(), "gui.window.state_idle"),
+                Some(4) => l10n::text(lang(), "gui.window.state_busy"),
+                Some(_) => l10n::text(lang(), "gui.window.state_stopped"),
+                None => l10n::text(lang(), "gui.window.state_unknown"),
+            };
+            let driver = match hplip::driver(&printer.real, &known) {
+                Some(hplip::Driver::Ipp) => l10n::text(lang(), "gui.window.driver_ipp"),
+                Some(hplip::Driver::Hplip) => l10n::text(lang(), "gui.window.driver_hplip"),
+                None => String::new(),
+            };
+            println!(
+                "  {}. {}  {} -> {}  · {state} · {driver}",
+                i + 1,
+                printer.name,
+                printer.listen,
+                printer.real
+            );
+            // The same warnings the window puts under the row.
+            let queue = hplip::queue_and_device(&printer.real, &known);
+            let absent = queue
+                .as_ref()
+                .and_then(|(_, device)| hplip::serial_of(device))
+                .and_then(usb::attached)
+                == Some(false);
+            if absent {
+                println!("     {}", l10n::text(lang(), "gui.window.usb_absent"));
+            } else if let Some((queue_name, _)) = queue {
+                let serving = usb::serving();
+                if !serving && usb::service_active() {
+                    println!(
+                        "     {}",
+                        l10n::tr(
+                            lang(),
+                            "gui.window.ipp_usb_hint",
+                            &[("queue", queue_name.clone())]
+                        )
+                    );
+                } else if serving {
+                    println!(
+                        "     {}",
+                        l10n::tr(
+                            lang(),
+                            "gui.window.hplip_hint",
+                            &[("queue", queue_name.clone())]
+                        )
+                    );
                 }
             }
-        },
+        }
+        println!("  {}", t!("tui.printers.actions"));
+        let choice = ask(&t!("tui.prompt"), "");
+        match choice.as_str() {
+            "a" => add_printer(config),
+            "e" => {
+                if let Some(index) = pick_printer(config) {
+                    edit_printer(config, index);
+                }
+            }
+            "d" => {
+                if let Some(index) = pick_printer(config) {
+                    remove_printer(config, index);
+                }
+            }
+            "f" => {
+                if let Some(index) = pick_printer(config) {
+                    flip(config, index);
+                }
+            }
+            "s" => {
+                if let Some(index) = pick_printer(config) {
+                    status(config, index);
+                }
+            }
+            "r" => {
+                if let Some(index) = pick_printer(config) {
+                    switch_driver(config, index);
+                }
+            }
+            "g" => register_queues(config, false),
+            "b" | "q" | "" => return,
+            _ => println!("{}", t!("tui.invalid")),
+        }
     }
+}
 
-    // 3. options + config file ---------------------------------------------
-    println!();
-    println!("{}", t!("setup.step.config"));
-    let mut daemon_args = format!("--printer {printer_uri}");
-    if listen != "127.0.0.1:6632" {
-        daemon_args += &format!(" --listen {listen}");
+fn pick_printer(config: &Config) -> Option<usize> {
+    if config.printers.is_empty() {
+        return None;
     }
-    // The service prints in the language chosen here unless the environment
-    // says otherwise, so remember the choice in the config file.
-    if lang() != l10n::FALLBACK {
-        daemon_args += &format!(" --lang {}", lang());
+    let answer = ask(&t!("tui.printers.which"), "1");
+    answer
+        .parse::<usize>()
+        .ok()
+        .filter(|n| *n >= 1 && *n <= config.printers.len())
+        .map(|n| n - 1)
+}
+
+fn add_printer(config: &mut Config) {
+    let detected = discover::cups_printers().unwrap_or_default();
+    if !detected.is_empty() {
+        println!("{}", t!("gui.window.detected_title"));
+        for (i, printer) in detected.iter().enumerate() {
+            println!("  {}. {} ({})", i + 1, printer.queue, printer.model);
+        }
     }
-    let mut gui = true;
+    let real = ask(
+        &t!("gui.window.field_real"),
+        detected.first().map(|p| p.uri.as_str()).unwrap_or(""),
+    );
+    let listen = ask(&t!("gui.window.field_listen"), &next_free_listen(config));
+    let name = ask(
+        &t!("gui.window.field_name"),
+        &suggested_name(config, &detected, &real),
+    );
+    let mut printer = Printer::new(&name, &listen, &real);
     if confirm(&t!("setup.ask.advanced"), false) {
-        if !confirm(&t!("setup.ask.gui"), true) {
-            daemon_args += " --no-gui";
-            gui = false;
-        }
-        if !confirm(&t!("setup.ask.rotate"), false) {
-            daemon_args += " --rotate-even 0";
-        }
-        let blank = ask(&t!("setup.ask.blank"), "none");
-        if blank != "none" {
-            daemon_args += &format!(" --blank {blank}");
-        }
+        printer.blank = ask(&t!("gui.window.field_blank"), &printer.blank);
+        printer.settle = ask_number(&t!("gui.window.field_settle"), printer.settle);
+        printer.poll = ask_number(&t!("gui.window.field_poll"), printer.poll);
+        printer.rotate_even = if confirm(&t!("gui.window.field_rotate"), printer.rotate_even == 180)
+        {
+            180
+        } else {
+            0
+        };
+        printer.auto_continue =
+            ask_number(&t!("gui.window.field_auto_continue"), printer.auto_continue);
+        printer.gui = confirm(&t!("gui.window.field_gui"), printer.gui);
     }
-    write_config(&daemon_args);
+    config.printers.push(printer);
+    save_and_register(config, false);
+}
 
-    // 4. service ------------------------------------------------------------
-    println!();
-    println!("{}", t!("setup.step.service"));
-    let mut running = false;
-    if do_service && have("systemctl") {
-        running = setup_service(&daemon_bin, gui);
-    } else if do_service {
-        println!("{}", t!("setup.service.no_systemd"));
-        println!("    {} {daemon_args}", daemon_bin.display());
+fn edit_printer(config: &mut Config, index: usize) {
+    let mut printer = config.printers[index].clone();
+    let previous = printer.name.clone();
+    printer.name = ask(&t!("gui.window.field_name"), &printer.name);
+    printer.listen = ask(&t!("gui.window.field_listen"), &printer.listen);
+    printer.real = ask(&t!("gui.window.field_real"), &printer.real);
+    printer.blank = ask(&t!("gui.window.field_blank"), &printer.blank);
+    printer.settle = ask_number(&t!("gui.window.field_settle"), printer.settle);
+    printer.poll = ask_number(&t!("gui.window.field_poll"), printer.poll);
+    printer.rotate_even = if confirm(&t!("gui.window.field_rotate"), printer.rotate_even == 180) {
+        180
     } else {
-        println!("{}", t!("setup.service.skipped"));
+        0
+    };
+    printer.auto_continue =
+        ask_number(&t!("gui.window.field_auto_continue"), printer.auto_continue);
+    printer.gui = confirm(&t!("gui.window.field_gui"), printer.gui);
+    config.printers[index] = printer.clone();
+    save_and_register(config, false);
+    if previous != printer.name {
+        let _ = queues::remove(&previous);
     }
+}
 
-    // 5. verify the virtual printer ----------------------------------------
-    let port = listen
-        .rsplit(':')
-        .next()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(6632);
-    let self_uri = format!("ipp://127.0.0.1:{port}/ipp/print");
-    if running {
-        print!("{}", t!("setup.service.waiting", listen = listen.as_str()));
-        io::stdout().flush().ok();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while !running_at(port) && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(200));
-            print!(".");
-            io::stdout().flush().ok();
-        }
+fn remove_printer(config: &mut Config, index: usize) {
+    let printer = config.printers.remove(index);
+    if confirm(&t!("gui.window.remove_body"), true) {
+        let _ = queues::remove(&printer.name);
+    }
+    save_and_register(config, false);
+}
+
+fn flip(config: &Config, index: usize) {
+    let printer = &config.printers[index];
+    match gui::http_get(&printer.listen, "/flip", lang()) {
+        Ok(text) => println!("{text}"),
+        Err(e) => println!(
+            "{}",
+            l10n::tr(
+                lang(),
+                "gui.window.unreachable",
+                &[("addr", printer.listen.clone()), ("err", e)]
+            )
+        ),
+    }
+}
+
+fn status(config: &Config, index: usize) {
+    let printer = &config.printers[index];
+    match gui::http_get(&printer.listen, "/", lang()) {
+        Ok(text) => println!("{text}"),
+        Err(e) => println!(
+            "{}",
+            l10n::tr(
+                lang(),
+                "gui.window.unreachable",
+                &[("addr", printer.listen.clone()), ("err", e)]
+            )
+        ),
+    }
+}
+
+fn switch_driver(config: &Config, index: usize) {
+    let printer = &config.printers[index];
+    let known = discover::cups_printers().unwrap_or_default();
+    let Some((queue, device)) = hplip::queue_and_device(&printer.real, &known) else {
+        println!("{}", t!("tui.driver.none"));
+        return;
+    };
+    let Some(port) = usb::serving_port() else {
+        println!("{}", t!("gui.window.ipp_usb_still_down"));
+        return;
+    };
+    if !confirm(
+        &t!("gui.window.ipp_recover_title", queue = queue.clone()),
+        true,
+    ) {
+        return;
+    }
+    let dir = service::data_dir();
+    match queues::ppd_text(&queue).and_then(|ppd| {
+        queues::switch_to_ipp_usb(&queue, &device, &ppd, &hplip::ipp_usb_uri(port), &dir)
+    }) {
+        Ok(()) => println!("{}", t!("gui.window.hplip_done", queue = queue)),
+        Err(e) => println!("{}", t!("gui.window.hplip_failed", queue = queue, err = e)),
+    }
+}
+
+// ---------------------------------------------------------------------- jobs
+
+fn jobs_menu(config: &Config) {
+    loop {
         println!();
-        match ipp::parse_uri(&self_uri).ok().and_then(|u| probe(&u)) {
-            Some(mm) => println!("{}", t!("setup.service.up", model = mm)),
-            None => println!("{}", t!("setup.service.down", listen = listen.as_str())),
+        println!("{}", t!("gui.window.jobs_title"));
+        let known = discover::cups_printers().unwrap_or_default();
+        let mut listed = 0;
+        for printer in &config.printers {
+            match gui::jobs_at(&printer.listen) {
+                Ok(jobs) if jobs.is_empty() => {
+                    println!(
+                        "  {}",
+                        l10n::tr(
+                            lang(),
+                            "gui.window.jobs_none",
+                            &[("name", printer.name.clone())]
+                        )
+                    );
+                }
+                Ok(jobs) => {
+                    for job in jobs {
+                        listed += 1;
+                        println!(
+                            "  {}. [{}] #{} {} — {} {}",
+                            listed, printer.name, job.id, job.name, job.user, job.message
+                        );
+                    }
+                }
+                Err(e) => println!(
+                    "  {}",
+                    l10n::tr(
+                        lang(),
+                        "gui.window.jobs_failed",
+                        &[("name", printer.name.clone()), ("err", e)]
+                    )
+                ),
+            }
+        }
+        let _ = known;
+        println!("  {}", t!("tui.jobs.actions"));
+        let choice = ask(&t!("tui.prompt"), "");
+        match choice.as_str() {
+            "r" => continue,
+            "c" => {
+                let name = ask(&t!("tui.jobs.printer"), "");
+                let id = ask(&t!("tui.jobs.id"), "");
+                let (Some(printer), Ok(id)) = (
+                    config.printers.iter().find(|p| p.name == name),
+                    id.trim().parse::<i32>(),
+                ) else {
+                    println!("{}", t!("tui.invalid"));
+                    continue;
+                };
+                match gui::cancel_job_at(&printer.listen, id) {
+                    Ok(()) => println!("{}", t!("gui.window.job_cancelled", id = id.to_string())),
+                    Err(e) => println!(
+                        "{}",
+                        t!("gui.window.job_cancel_failed", id = id.to_string(), err = e)
+                    ),
+                }
+            }
+            "b" | "q" | "" => return,
+            _ => println!("{}", t!("tui.invalid")),
         }
     }
-
-    // 6. CUPS queue ----------------------------------------------------------
-    println!();
-    println!("{}", t!("setup.step.queue"));
-    if do_queue && have("lpadmin") {
-        let default = queue_default(&printer_uri);
-        let queue = queue_name.unwrap_or_else(|| ask(&t!("setup.queue.name"), &default));
-        add_queue(&queue, &self_uri);
-    } else if do_queue {
-        println!("{}", t!("setup.queue.no_lpadmin"));
-        println!("    lpadmin -p manual-duplex -E -v {self_uri} -m everywhere");
-    } else {
-        println!("{}", t!("setup.queue.skipped"));
-    }
-
-    println!();
-    println!("{}", t!("setup.done", port = port));
-    println!("{}", t!("setup.done.status", port = port));
 }
 
-// ------------------------------------------------------------------- args
+// ------------------------------------------------------------------- service
 
-/// The value of `flag` in `argv`, wherever it appears.
-fn arg_value(argv: &[String], flag: &str) -> Option<String> {
-    let mut it = argv.iter();
-    while let Some(a) = it.next() {
-        if a == flag {
-            return it.next().cloned();
+fn service_menu() {
+    loop {
+        println!();
+        println!("{}", t!("gui.window.service_title"));
+        let state = if service::installed() {
+            if service::available() {
+                service::state_text()
+            } else {
+                l10n::text(lang(), "gui.window.service_missing")
+            }
+        } else {
+            l10n::text(lang(), "gui.window.service_not_installed")
+        };
+        println!("  {state}");
+        println!("  {}", t!("tui.service.actions"));
+        match ask(&t!("tui.prompt"), "").as_str() {
+            "i" => {
+                if let Err(e) = start_service() {
+                    println!("{e}");
+                }
+            }
+            "u" => {
+                if confirm(&t!("gui.window.uninstall_title"), false) {
+                    match service::uninstall().map(|_| ()) {
+                        Ok(()) => println!("{}", t!("gui.window.uninstalled")),
+                        Err(e) => println!("{}", t!("gui.window.uninstall_failed", err = e)),
+                    }
+                }
+            }
+            "r" => match service::restart() {
+                Ok(()) => println!("{}", t!("gui.window.restarted")),
+                Err(e) => println!("{}", t!("gui.window.restart_failed", err = e)),
+            },
+            "b" | "q" | "" => return,
+            _ => println!("{}", t!("tui.invalid")),
         }
     }
-    None
 }
 
-// ---------------------------------------------------------------- questions
+// ------------------------------------------------------------------ settings
+
+fn settings_menu(config: &mut Config) {
+    loop {
+        println!();
+        println!("{}", t!("gui.window.settings_title"));
+        println!("  {}", t!("gui.window.config_title"));
+        println!("    {}", Config::path().display());
+        println!("  {}", t!("gui.window.language_title"));
+        println!(
+            "    {}",
+            config.settings.language.as_deref().unwrap_or(lang())
+        );
+        println!("  {}", t!("tui.settings.actions"));
+        match ask(&t!("tui.prompt"), "").as_str() {
+            "l" => {
+                let code = ask(&t!("gui.window.language_title"), lang());
+                match l10n::normalize(&code) {
+                    Some(code) => {
+                        config.settings.language = Some(code.to_string());
+                        save_and_register(config, true);
+                    }
+                    None => println!(
+                        "{}",
+                        t!(
+                            "setup.err.bad_lang",
+                            lang = code,
+                            list = l10n::describe_all()
+                        )
+                    ),
+                }
+            }
+            "b" | "q" | "" => return,
+            _ => println!("{}", t!("tui.invalid")),
+        }
+    }
+}
+
+// -------------------------------------------------------------------- shared
+
+fn save_and_register(config: &mut Config, quiet: bool) {
+    if let Err(e) = config
+        .validate(lang())
+        .and_then(|_| config.save(&Config::path(), lang()))
+    {
+        println!(
+            "{}",
+            l10n::tr(lang(), "gui.window.save_failed", &[("err", e)])
+        );
+        return;
+    }
+    reload_daemons(config);
+    register_queues(config, quiet);
+}
+
+fn reload_daemons(config: &Config) {
+    let addrs: Vec<String> = config.printers.iter().map(|p| p.listen.clone()).collect();
+    if gui::reload_everywhere(&addrs, lang()) > 0 {
+        return;
+    }
+    // Nothing answers: either the unit is stopped or there is none yet.
+    if service::installed() {
+        let _ = service::restart();
+    } else if let Err(e) = start_service() {
+        println!("{e}");
+    }
+}
+
+fn register_queues(config: &Config, quiet: bool) {
+    for printer in &config.printers {
+        if gui::http_get(&printer.listen, "/", lang()).is_err() {
+            continue;
+        }
+        match queues::ensure(&printer.name, &printer.listen) {
+            Ok(()) => {
+                if !quiet {
+                    println!("{}", t!("gui.window.queue_registered"));
+                }
+            }
+            Err(e) => println!(
+                "{}",
+                l10n::tr(
+                    lang(),
+                    "gui.window.queue_failed",
+                    &[("name", printer.name.clone()), ("err", e)]
+                )
+            ),
+        }
+    }
+}
+
+fn start_service() -> Result<(), String> {
+    match service::install(false).map(|_| ()) {
+        Ok(()) => {
+            println!("{}", t!("gui.window.setup_done"));
+            Ok(())
+        }
+        Err(e) => Err(l10n::tr(lang(), "gui.window.setup_failed", &[("err", e)])),
+    }
+}
+
+fn next_free_listen(config: &Config) -> String {
+    let used: Vec<String> = config.printers.iter().map(|p| p.listen.clone()).collect();
+    gui::default_listen(&used)
+}
+
+fn suggested_name(config: &Config, detected: &[discover::Discovered], real: &str) -> String {
+    let existing: Vec<String> = config.printers.iter().map(|p| p.name.clone()).collect();
+    let queue = detected
+        .iter()
+        .find(|printer| printer.uri == real)
+        .map(|printer| printer.queue.clone())
+        .unwrap_or_else(|| "manual".to_string());
+    discover::suggested_name(&queue, &existing)
+}
+
+// ------------------------------------------------------------------- prompting
 
 fn ask(prompt: &str, default: &str) -> String {
     if ASSUME_DEFAULTS.load(Ordering::Relaxed) {
-        return default.into();
+        return default.to_string();
     }
     print!("{prompt} [{default}]: ");
-    io::stdout().flush().ok();
-    let mut s = String::new();
-    if io::stdin().read_line(&mut s).unwrap_or(0) == 0 {
-        println!();
-        return default.into(); // EOF
+    let _ = io::stdout().flush();
+    let mut line = String::new();
+    if io::stdin().read_line(&mut line).is_err() {
+        return default.to_string();
     }
-    let t = s.trim();
-    if t.is_empty() {
-        default.into()
+    let line = line.trim();
+    if line.is_empty() {
+        default.to_string()
     } else {
-        t.into()
+        line.to_string()
     }
 }
 
+fn ask_number(prompt: &str, default: u64) -> u64 {
+    ask(prompt, &default.to_string()).parse().unwrap_or(default)
+}
+
 fn confirm(prompt: &str, default: bool) -> bool {
-    let d = if default { "Y/n" } else { "y/N" };
-    let a = ask(prompt, d);
-    match a.to_ascii_lowercase().as_str() {
-        "y" | "yes" | "是" => true,
-        "n" | "no" | "否" => false,
+    let hint = if default { "Y/n" } else { "y/N" };
+    if ASSUME_DEFAULTS.load(Ordering::Relaxed) {
+        return default;
+    }
+    print!("{prompt} [{hint}]: ");
+    let _ = io::stdout().flush();
+    let mut line = String::new();
+    if io::stdin().read_line(&mut line).is_err() {
+        return default;
+    }
+    match line.trim().to_ascii_lowercase().as_str() {
+        "" => default,
+        "y" | "yes" => true,
+        "n" | "no" => false,
         _ => default,
     }
 }
 
-// ------------------------------------------------------------------ helpers
-
-fn have(cmd: &str) -> bool {
-    Command::new(cmd)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success() || !o.stderr.is_empty() || !o.stdout.is_empty())
-        .unwrap_or(false)
-}
-
-fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new(cmd)
-        .args(args)
-        .output()
-        .map_err(|e| e.to_string())?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-    } else {
-        let mut msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        if msg.is_empty() {
-            msg = format!("exit status {}", out.status);
-        }
-        Err(msg)
-    }
-}
-
-fn home() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))
-}
-
-/// The daemon to install in the unit: the same lookup the window uses, so the
-/// two front ends cannot disagree about which binary a machine runs.
-fn find_duplexd() -> Option<PathBuf> {
-    service::daemon_binary()
-}
-
-fn running_at(port: u16) -> bool {
-    TcpStream::connect(("127.0.0.1", port)).is_ok()
-}
-
-/// Get-Printer-Attributes; Some(make-and-model) if an IPP printer answers.
-fn probe(uri: &ipp::PrinterUri) -> Option<String> {
-    let mut m = Msg::new(ipp::OP_GET_PRINTER_ATTRS, 1);
-    m.groups.push(Group {
-        tag: ipp::G_OPERATION,
-        attrs: vec![
-            Attr::str(ipp::T_CHARSET, "attributes-charset", "utf-8"),
-            Attr::str(ipp::T_LANGUAGE, "attributes-natural-language", "en"),
-            Attr::str(ipp::T_URI, "printer-uri", &uri.uri),
-        ],
-    });
-    let resp = ipp::request(uri, &m).ok()?;
-    let unnamed = t!("setup.probe.unnamed").to_string();
-    Some(
-        resp.find("printer-make-and-model")
-            .and_then(|a| a.first_str())
-            .unwrap_or(unnamed.as_str())
-            .to_string(),
-    )
-}
-
-// ------------------------------------------------------------ printer choice
-
-/// All CUPS queues as (name, device-uri), parsed from `lpstat -v`.
-fn cups_queues() -> Vec<(String, String)> {
-    let Ok(out) = run("lpstat", &["-v"]) else {
-        return Vec::new();
-    };
-    out.lines()
-        .filter_map(|l| {
-            // "device for laser: ipp://host/..."
-            let rest = l.strip_prefix("device for ")?;
-            let (name, uri) = rest.split_once(':')?;
-            Some((name.trim().to_string(), uri.trim().to_string()))
-        })
-        .collect()
-}
-
-fn choose_printer() -> String {
-    // skip queues on loopback:6632 — that would be ipp-duplexd-fork forwarding to itself
-    let queues: Vec<_> = cups_queues()
-        .into_iter()
-        .filter(|(_, uri)| !uri.contains("127.0.0.1:6632") && !uri.contains("localhost:6632"))
-        .collect();
-    if queues.is_empty() {
-        println!("{}", t!("setup.choose.no_queues"));
-        return ask(
-            &t!("setup.choose.real_uri"),
-            "ipp://192.168.1.100:631/ipp/print",
-        );
-    }
-    println!("{}", t!("setup.choose.recommend"));
-    for (i, (name, uri)) in queues.iter().enumerate() {
-        println!("    {}) {name}  ({uri})", i + 1);
-    }
-    println!("{}", t!("setup.choose.or_uri"));
-    loop {
-        let a = ask(&t!("setup.choose.real_printer"), "1");
-        if let Ok(n) = a.parse::<usize>() {
-            if n >= 1 && n <= queues.len() {
-                return format!("ipp://127.0.0.1:631/printers/{}", queues[n - 1].0);
-            }
-        }
-        if a.starts_with("ipp://") || a.starts_with("http://") {
-            return a;
-        }
-        println!("{}", t!("setup.choose.bad_input", n = queues.len()));
-        if ASSUME_DEFAULTS.load(Ordering::Relaxed) {
-            std::process::exit(1); // avoid looping forever with --yes
-        }
-    }
-}
-
-/// "laser-duplex" when forwarding to a CUPS queue, else "manual-duplex".
-fn queue_default(printer_uri: &str) -> String {
-    printer_uri
-        .rsplit_once("/printers/")
-        .map(|(_, q)| format!("{q}-duplex"))
-        .unwrap_or_else(|| "manual-duplex".into())
-}
-
-// -------------------------------------------------------------- config file
-
-fn write_config(daemon_args: &str) {
-    let path = home().join(".config/ipp-duplexd-fork.conf");
-    let line = format!("IPP_DUPLEXD_FORK_ARGS={daemon_args}\n");
-    if let Ok(existing) = std::fs::read_to_string(&path) {
-        if existing == line {
-            println!("{}", t!("setup.config.up_to_date", path = path.display()));
-            return;
-        }
-        println!("{}", t!("setup.config.exists", path = path.display()));
-        for l in existing.lines().take(5) {
-            println!("    | {l}");
-        }
-        if !confirm(&t!("setup.config.overwrite"), true) {
-            println!("{}", t!("setup.config.keeping"));
-            return;
-        }
-    }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).ok();
-    }
-    match std::fs::write(&path, &line) {
-        Ok(()) => println!(
-            "{}",
-            t!(
-                "setup.config.wrote",
-                path = path.display(),
-                line = line.trim_end()
-            )
-        ),
-        Err(e) => {
-            println!(
-                "{}",
-                t!("setup.config.cannot_write", path = path.display(), err = e)
-            );
-            std::process::exit(1);
-        }
-    }
-}
-
-// ------------------------------------------------------------------ service
-
-/// Enable + (re)start the user service; returns true if it should be running.
-fn setup_service(daemon_bin: &Path, gui: bool) -> bool {
-    // package-installed unit, or write one ourselves
-    let packaged = Path::new("/usr/lib/systemd/user/ipp-duplexd-fork.service").is_file()
-        || Path::new("/lib/systemd/user/ipp-duplexd-fork.service").is_file();
-    let user_unit = home().join(".config/systemd/user/ipp-duplexd-fork.service");
-    if !packaged && !user_unit.is_file() {
-        // With the dialog, bind to the graphical session: it starts once the
-        // display variables exist and stops when they go away. Without it,
-        // there is nothing session-bound about the daemon, so run it for the
-        // whole login (it still serves GET /flip over ssh, with no desktop up).
-        let unit = service::unit_text(daemon_bin, gui);
-        std::fs::create_dir_all(user_unit.parent().unwrap()).ok();
-        match std::fs::write(&user_unit, unit) {
-            Ok(()) => println!(
-                "{}",
-                t!("setup.service.installed", path = user_unit.display())
-            ),
-            Err(e) => {
-                println!(
-                    "{}",
-                    t!(
-                        "setup.service.cannot_write",
-                        path = user_unit.display(),
-                        err = e
-                    )
-                );
-                return false;
-            }
-        }
-        let _ = run("systemctl", &["--user", "daemon-reload"]);
-    }
-    // The dialog needs the session's display variables in the service
-    // environment. A desktop session normally imports them into the user
-    // manager itself at login; warn if this one did not, since the dialog will
-    // not open until they are there.
-    if gui {
-        let manager_env = run("systemctl", &["--user", "show-environment"]).unwrap_or_default();
-        let missing: Vec<String> = ["DISPLAY", "WAYLAND_DISPLAY"]
-            .iter()
-            .filter(|v| {
-                !manager_env
-                    .lines()
-                    .any(|l| l.split('=').next() == Some(**v))
-            })
-            .filter_map(|v| {
-                let val = std::env::var_os(v)?;
-                Some(format!("{v}={}", val.to_string_lossy()))
-            })
-            .collect();
-        if !missing.is_empty() {
-            println!("{}", t!("setup.service.no_display"));
-            println!("{}", t!("setup.service.no_display_hint"));
-            println!("{}", t!("setup.service.no_display_conf"));
-            for kv in &missing {
-                println!("      {kv}");
-            }
-        }
-    }
-    match run(
-        "systemctl",
-        &["--user", "enable", "--now", "ipp-duplexd-fork"],
-    ) {
-        Ok(_) => {}
-        Err(e) => {
-            println!("{}", t!("setup.service.enable_failed", err = e));
-            println!(
-                "{}",
-                t!("setup.service.start_manually", bin = daemon_bin.display())
-            );
-            return false;
-        }
-    }
-    // restart in case it was already running with the old config
-    let _ = run("systemctl", &["--user", "restart", "ipp-duplexd-fork"]);
-    println!("{}", t!("setup.service.enabled"));
-    true
-}
-
-// --------------------------------------------------------------- CUPS queue
-
-fn add_queue(queue: &str, self_uri: &str) {
-    // already pointing at us?
-    if let Some((_, uri)) = cups_queues().into_iter().find(|(n, _)| n == queue) {
-        if uri == self_uri {
-            println!("{}", t!("setup.queue.already", queue = queue));
-            return;
-        }
-        println!(
-            "{}",
-            t!("setup.queue.exists", queue = queue, uri = uri.as_str())
-        );
-        if !confirm(&t!("setup.queue.repoint"), false) {
-            return;
-        }
-    }
-    match run(
-        "lpadmin",
-        &["-p", queue, "-E", "-v", self_uri, "-m", "everywhere"],
-    ) {
-        Ok(_) => {
-            println!("{}", t!("setup.queue.added", queue = queue, uri = self_uri));
-            println!("{}", t!("setup.queue.test", queue = queue));
-        }
-        Err(e) => {
-            println!("{}", t!("setup.queue.lpadmin_failed", err = e));
-            println!("{}", t!("setup.queue.need_admin"));
-            println!("    sudo lpadmin -p {queue} -E -v {self_uri} -m everywhere");
-        }
-    }
+fn arg_value(argv: &[String], name: &str) -> Option<String> {
+    argv.iter()
+        .position(|a| a == name)
+        .and_then(|i| argv.get(i + 1))
+        .cloned()
 }
