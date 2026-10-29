@@ -629,13 +629,35 @@ fn diagnostics_text(state: &Rc<State>) -> String {
 /// A dialog for text a person may need to read twice, select and paste
 /// somewhere else: wrapped, scrollable, selectable, with a Copy button. Toasts
 /// are for "saved", not for a journal.
+/// A window for text a person may read twice, select and paste somewhere else.
+///
+/// A window, not an `AdwAlertDialog`: this is several screens of monospace text
+/// and an alert dialog sizes itself to its child, which put the heading on top
+/// of the first lines and cut the long ones off at the edge.
 fn show_text(state: &Rc<State>, title: &str, body: &str) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);
 
-    // A real text view, not a wrapped label: these are several blocks of
-    // different shapes (unit file, systemctl status, journal lines) and a label
-    // reflows all of them into one ragged column.
+    let window = adw::Window::builder()
+        .title(title)
+        .transient_for(&state.window)
+        .modal(true)
+        .default_width(760)
+        .default_height(600)
+        .build();
+
+    let header = adw::HeaderBar::new();
+    let close = gtk::Button::with_label(&labels.close);
+    close.add_css_class("flat");
+    {
+        let window = window.clone();
+        close.connect_clicked(move |_| window.close());
+    }
+    header.pack_end(&close);
+
+    // A text view, not a wrapped label: these are several blocks of different
+    // shapes (unit file, systemctl status, journal lines) and a label reflows
+    // them into one ragged column.
     let view = gtk::TextView::new();
     view.set_editable(false);
     view.set_cursor_visible(false);
@@ -646,39 +668,43 @@ fn show_text(state: &Rc<State>, title: &str, body: &str) {
     view.set_top_margin(10);
     view.set_bottom_margin(10);
     view.buffer().set_text(body);
+
     let scroller = gtk::ScrolledWindow::builder()
         .child(&view)
-        .min_content_width(700)
-        .min_content_height(430)
+        .hexpand(true)
+        .vexpand(true)
         .build();
-    scroller.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
 
-    let body_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    body_box.append(&scroller);
     let copy = gtk::Button::with_label(&labels.copy);
     copy.add_css_class("flat");
     copy.set_halign(gtk::Align::End);
+    copy.set_margin_top(6);
+    copy.set_margin_bottom(6);
+    copy.set_margin_end(12);
     {
+        let window = window.clone();
         let state = state.clone();
         let text = body.to_string();
         let copied = labels.copied.clone();
         copy.connect_clicked(move |_| {
-            // RootExt::display and WidgetExt::display both apply to a window, so
-            // name the one that returns the GdkDisplay this clipboard lives on.
-            let display = gtk::prelude::WidgetExt::display(&state.window);
+            let display = gtk::prelude::WidgetExt::display(&window);
             display.clipboard().set_text(&text);
             toast(&state, &copied);
         });
     }
-    body_box.append(&copy);
 
-    let dialog = adw::AlertDialog::builder()
-        .heading(title)
-        .extra_child(&body_box)
-        .build();
-    dialog.add_response("close", &labels.close);
-    dialog.set_close_response("close");
-    dialog.present(Some(&state.window));
+    let bottom = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    bottom.append(&copy);
+
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    content.append(&scroller);
+    content.append(&bottom);
+
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&header);
+    toolbar.set_content(Some(&content));
+    window.set_content(Some(&toolbar));
+    window.present();
 }
 
 fn diagnostics_group(state: &Rc<State>, labels: &gui::WindowLabels) -> adw::PreferencesGroup {
