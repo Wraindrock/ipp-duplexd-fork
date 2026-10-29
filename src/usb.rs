@@ -114,6 +114,23 @@ pub fn serving_at(host: &str, port: u16) -> bool {
     addresses.any(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok())
 }
 
+/// Overrides the `systemctl` program; tests use it to point at a stub.
+pub const SYSTEMCTL_ENV: &str = "IPP_DUPLEXD_FORK_SYSTEMCTL";
+
+/// Is the `ipp-usb` *service* running?
+///
+/// Different from [`serving`]: the service can be active (so it has claimed the
+/// USB device and hplip cannot open it) while no device instance answers on the
+/// port. That gap is the state where neither path can print.
+pub fn service_active() -> bool {
+    let program = std::env::var(SYSTEMCTL_ENV).unwrap_or_else(|_| "systemctl".to_string());
+    std::process::Command::new(program)
+        .args(["is-active", "ipp-usb"])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
 /// The first printer that cannot print because `ipp-usb` is missing.
 ///
 /// `uris` are the configured `real` addresses and `installed` is passed in (not

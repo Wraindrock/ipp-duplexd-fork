@@ -81,6 +81,52 @@ pub fn conflict_for(real: &str, queues: &[Discovered], ipp_usb: bool) -> Option<
     })
 }
 
+/// Is `ipp-usb` holding the printer without serving it?
+///
+/// The service is running — so it has claimed the USB interfaces and hplip can
+/// never open the device — but nothing answers on its port, so a driverless
+/// queue cannot print either. Neither path works and nothing says why; the
+/// window offers to restart or stop the service for exactly this state.
+pub fn stuck(
+    real: &str,
+    queues: &[Discovered],
+    ipp_usb_active: bool,
+    ipp_usb_serving: bool,
+) -> Option<String> {
+    if ipp_usb_serving || !ipp_usb_active {
+        return None;
+    }
+    let queue = queue_of_real(real)?;
+    let found = queues.iter().find(|known| known.queue == queue)?;
+    let device_uri = found.device_uri.as_deref()?;
+    is_hplip_usb(device_uri).then_some(queue)
+}
+
+/// How the real printer is driven right now, for the row label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Driver {
+    /// The queue talks IPP to ipp-usb: no hplip in the path.
+    Ipp,
+    /// The queue drives the USB device through hplip's backend.
+    Hplip,
+}
+
+/// The driver behind a printer's `real` address, if it is one we recognise.
+pub fn driver(real: &str, queues: &[Discovered]) -> Option<Driver> {
+    let queue = queue_of_real(real)?;
+    let device_uri = queues
+        .iter()
+        .find(|known| known.queue == queue)?
+        .device_uri
+        .as_deref()?;
+    if is_hplip_usb(device_uri) {
+        return Some(Driver::Hplip);
+    }
+    let ipp_usb = format!("ipp://localhost:{}/", crate::usb::PORT);
+    let ipp_usb_v4 = format!("ipp://127.0.0.1:{}/", crate::usb::PORT);
+    (device_uri.starts_with(&ipp_usb) || device_uri.starts_with(&ipp_usb_v4)).then_some(Driver::Ipp)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +208,36 @@ mod tests {
         );
         let unknown_device = vec![queue("DeskJet-2600", None)];
         assert_eq!(conflict_for(real, &unknown_device, true), None);
+    }
+    #[test]
+    fn a_stuck_ipp_usb_is_reported_only_in_that_state() {
+        let queues = vec![queue(
+            "DeskJet-2600",
+            Some("hp:/usb/DeskJet_2600_series?serial=X"),
+        )];
+        let real = "ipp://127.0.0.1:631/printers/DeskJet-2600";
+        // running but not serving: the state this exists for
+        assert_eq!(
+            stuck(real, &queues, true, false).as_deref(),
+            Some("DeskJet-2600")
+        );
+        // serving: that is the ordinary conflict, handled elsewhere
+        assert_eq!(stuck(real, &queues, true, true), None);
+        // not running: hplip owns the device and everything works
+        assert_eq!(stuck(real, &queues, false, false), None);
+    }
+
+    #[test]
+    fn the_driver_is_read_from_the_queue_device() {
+        let queues = vec![
+            queue("a", Some("hp:/usb/DeskJet_2600_series?serial=X")),
+            queue("b", Some("ipp://localhost:60000/ipp/print")),
+            queue("c", Some("ipp://127.0.0.1:631/printers/x")),
+        ];
+        let of = |name: &str| driver(&format!("ipp://127.0.0.1:631/printers/{name}"), &queues);
+        assert_eq!(of("a"), Some(Driver::Hplip));
+        assert_eq!(of("b"), Some(Driver::Ipp));
+        assert_eq!(of("c"), None);
+        assert_eq!(of("missing"), None);
     }
 }

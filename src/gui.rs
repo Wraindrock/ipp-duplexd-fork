@@ -286,6 +286,17 @@ pub struct WindowLabels {
     pub service_failed: String,
     pub hplip_failed_title: String,
     pub hplip_manual: String,
+    pub driver_ipp: String,
+    pub driver_hplip: String,
+    pub ipp_usb_hint: String,
+    pub ipp_usb_tooltip: String,
+    pub ipp_usb_title: String,
+    pub ipp_usb_body: String,
+    pub ipp_usb_restart: String,
+    pub ipp_usb_stop: String,
+    pub ipp_usb_serving: String,
+    pub ipp_usb_stopped: String,
+    pub ipp_usb_failed: String,
 }
 
 pub fn window_labels(locale: &str) -> WindowLabels {
@@ -405,6 +416,17 @@ pub fn window_labels(locale: &str) -> WindowLabels {
         service_failed: text("gui.window.service_failed"),
         hplip_failed_title: text("gui.window.hplip_failed_title"),
         hplip_manual: text("gui.window.hplip_manual"),
+        driver_ipp: text("gui.window.driver_ipp"),
+        driver_hplip: text("gui.window.driver_hplip"),
+        ipp_usb_hint: text("gui.window.ipp_usb_hint"),
+        ipp_usb_tooltip: text("gui.window.ipp_usb_tooltip"),
+        ipp_usb_title: text("gui.window.ipp_usb_title"),
+        ipp_usb_body: text("gui.window.ipp_usb_body"),
+        ipp_usb_restart: text("gui.window.ipp_usb_restart"),
+        ipp_usb_stop: text("gui.window.ipp_usb_stop"),
+        ipp_usb_serving: text("gui.window.ipp_usb_serving"),
+        ipp_usb_stopped: text("gui.window.ipp_usb_stopped"),
+        ipp_usb_failed: text("gui.window.ipp_usb_failed"),
     }
 }
 
