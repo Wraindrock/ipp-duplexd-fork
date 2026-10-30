@@ -92,6 +92,11 @@ USB 打印机接在不同机器之间切换（比如宿主和虚拟机通过 USB
 不是同一个文件。窗口会在"服务"分组里自己提示"服务还在跑旧版本的副本"，点
 **更新并重启**即可。
 
+**菜单里的图标还是旧的（AppImage）**：桌面项指向的是添加应用时解压出来的那份图标，
+替换 AppImage 不会更新它。在 Gear Lever 里移除再添加一次（桌面项和图标会一起重建），
+或者用 `--appimage-extract io.github.wraindrock.ipp_duplexd_fork.png` 从当前镜像里
+取出图标，覆盖 `Icon=` 指向的那个文件。两种方式之后都要注销重登——Shell 会缓存图标。
+
 **CUPS 把队列禁用了**：连续失败后 CUPS 会自动 `disable` 队列，用
 `cupsenable <队列名>` 恢复；如果 hplip 后端卡死，`systemctl restart cups`。
 
