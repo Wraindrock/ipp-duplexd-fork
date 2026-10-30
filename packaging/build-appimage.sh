@@ -80,8 +80,8 @@ done
 install -m 0755 packaging/appimage/AppRun "$appdir/AppRun"
 install -m 0644 packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
     "$appdir/io.github.wraindrock.ipp_duplexd_fork.desktop"
-install -m 0644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
-    "$appdir/io.github.wraindrock.ipp_duplexd_fork.svg"
+install -m 0644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
+    "$appdir/io.github.wraindrock.ipp_duplexd_fork.png"
 
 # APPIMAGE_EXTRACT_AND_RUN keeps the tools usable on machines without FUSE
 # (containers, minimal installs), which is also where this script tends to run.
@@ -132,7 +132,7 @@ done
 if [ ! -f "$root/io.github.wraindrock.ipp_duplexd_fork.desktop" ]; then
     problems+=("no desktop entry at the image root")
 fi
-if [ ! -f "$root/io.github.wraindrock.ipp_duplexd_fork.svg" ]; then
+if [ ! -f "$root/io.github.wraindrock.ipp_duplexd_fork.png" ]; then
     problems+=("no application icon at the image root")
 fi
 

@@ -32,7 +32,7 @@ tar czf "$top/SOURCES/ipp-duplexd-fork.tar.gz" \
     Cargo.toml Cargo.lock src locales docs README.md LICENSE \
     packaging/ipp-duplexd-fork.service packaging/ipp-duplexd-fork.conf.example \
     packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
-    packaging/io.github.wraindrock.ipp_duplexd_fork.svg
+    packaging/io.github.wraindrock.ipp_duplexd_fork.png
 
 # --nodeps: the BuildRequires above are what a distribution build checks;
 # this script must also work on a host without an RPM database (the same way
@@ -73,7 +73,7 @@ has /usr/lib/systemd/user/ipp-duplexd-fork.service || problems+=("no systemd use
 # application menu, which is how people start the window.
 has /usr/share/applications/io.github.wraindrock.ipp_duplexd_fork.desktop \
     || problems+=("no desktop entry")
-has /usr/share/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg \
+has /usr/share/icons/hicolor/512x512/apps/io.github.wraindrock.ipp_duplexd_fork.png \
     || problems+=("no application icon")
 # Fedora puts docs in /usr/share/doc/ipp-duplexd-fork-<version>/, other layouts use
 # a fixed /usr/share/doc/ipp-duplexd-fork/, so only the file name and the directory

@@ -1,3 +1,5 @@
+<img src="packaging/io.github.wraindrock.ipp_duplexd_fork.png" width="160" alt="ipp-duplexd-fork 图标">
+
 # ipp-duplexd-fork —— 用手动双面打印把任何单面打印机变成双面机
 
 [English](README.md) · **简体中文**

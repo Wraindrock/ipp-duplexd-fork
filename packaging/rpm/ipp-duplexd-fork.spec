@@ -104,8 +104,8 @@ install -Dpm755 target/release/ipp-duplexd-fork-gui %{buildroot}%{_bindir}/ipp-d
 install -Dpm644 packaging/ipp-duplexd-fork.service %{buildroot}%{_userunitdir}/ipp-duplexd-fork.service
 install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.desktop \
     %{buildroot}%{_datadir}/applications/io.github.wraindrock.ipp_duplexd_fork.desktop
-install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
-    %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg
+install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
+    %{buildroot}%{_datadir}/icons/hicolor/512x512/apps/io.github.wraindrock.ipp_duplexd_fork.png
 
 # tests/ and %check are left out on purpose: the end-to-end suite needs qpdf
 # and a mock printer, which belongs in CI (packaging/*.sh run it), not in
@@ -120,7 +120,7 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.svg \
 %{_bindir}/ipp-duplexd-fork-gui
 %{_userunitdir}/ipp-duplexd-fork.service
 %{_datadir}/applications/io.github.wraindrock.ipp_duplexd_fork.desktop
-%{_datadir}/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg
+%{_datadir}/icons/hicolor/512x512/apps/io.github.wraindrock.ipp_duplexd_fork.png
 
 %changelog
 
