@@ -74,20 +74,21 @@ was installed) and deletes it rather than leave a broken artifact.
 A version says what a build contains, not when it was typed:
 
 ```
-2610 . 3 - 2
-|    |   `-- fix counter: the 2nd fix (or change) for feature 3 and the ones before it
-|    `------ feature counter: starts at 1 each month, one step per feature update
-`----------- year and month (YYMM) the feature shipped in
+26 . 10 . 3 - 2
+|    |    |   `-- fix counter: the 2nd fix (or change) for feature 3 and the ones before it
+|    |    `------ feature counter: starts at 1 each month, one step per feature update
+|    `----------- month
+`---------------- year
 ```
 
-So `2610.3` is the third feature update in October 2026, `2610.3-1` the first
-fix on top of it (and on top of everything before it), and `2611.1` the first
+So `26.10.3` is the third feature update in October 2026, `26.10.3-1` the first
+fix on top of it (and on top of everything before it), and `26.11.1` the first
 feature update in November. Fixes keep the train and the feature they belong
-to, so they sort exactly where they belong: after `2610.3`, before `2610.4`.
-The release tag is `v2610.3-1` (or `v2610.3` for a feature release). Cargo
-requires three numbers, so `Cargo.toml` keeps the fix counter in the patch
-position — `2610.3.0` for the feature, `2610.3.1` after one fix — and
-`packaging/version.sh as-tag` converts one spelling into the other.
+to, so they sort exactly where they belong: after `26.10.3`, before `26.10.4`.
+The release tag is `v26.10.3-1` (or `v26.10.3` for a feature release). Cargo
+has no room for the fix counter in the number itself, so `Cargo.toml` puts it
+in the build metadata — `26.10.3` for the feature, `26.10.3+1` after one fix —
+and `packaging/version.sh as-tag` converts one spelling into the other.
 
 `packaging/version.sh next` prints the next feature release (it counts the
 tags of the current month; the month comes from the local date, so set `TZ`
@@ -101,9 +102,9 @@ before anything is published. `packaging/release.sh` does a whole cut:
 version, checks, commit, tag, push — `./packaging/release.sh` for a feature
 release, `./packaging/release.sh fix` for a fix.
 
-Each package format spells the same number its own way: RPM splits `2610.3-1`
-into `Version: 2610.3` and `Release: 1` (no dashes allowed in `Version`), Arch
-into `pkgver=2610.3` and `pkgrel=1`, and Debian takes `2610.3-1` unchanged as
+Each package format spells the same number its own way: RPM splits `26.10.3-1`
+into `Version: 26.10.3` and `Release: 1` (no dashes allowed in `Version`), Arch
+into `pkgver=26.10.3` and `pkgrel=1`, and Debian takes `26.10.3-1` unchanged as
 upstream-version/revision.
 ## Installing on Fedora with dnf
 
