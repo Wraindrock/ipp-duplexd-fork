@@ -1,11 +1,11 @@
 #!/bin/bash
 # Build a Debian/Ubuntu binary package from the working tree.
 # Needs: cargo, dpkg-deb. Result: packaging/ipp-duplexd-fork_<version>_<arch>.deb
-# (<version> is YYYY.MM.DD-N, see packaging/version.sh; Debian keeps it whole.)
+# (<version> is YYMM.N[-x], see packaging/version.sh; Debian keeps it whole.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# already YYYY.MM.DD-N, which Debian reads as upstream-version/revision
+# already YYMM.N-x, which Debian reads as upstream-version/revision
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 arch=$(dpkg --print-architecture 2>/dev/null || echo amd64)
 

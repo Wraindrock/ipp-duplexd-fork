@@ -98,7 +98,8 @@ and renames over it — writing into a file the unit is executing fails with
 ## Packaging and versions
 
 - `packaging/version.sh set <version>` — never hand-edit the tag; the version
-  is `YYYY.MM.DD-N`.
+  is `YYMM.<feature>[-<fix>]`, and `next` / `fix` compute the next one of each
+  (see the README's *Version numbers*).
 - `packaging/release.sh` — fmt, clippy, shellcheck, build, test, commit
   `Release vX`, tag, push. It refuses a dirty tree.
 - A tag triggers `.github/workflows/release.yml` (AppImage, deb, rpm, Arch

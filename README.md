@@ -71,25 +71,38 @@ was installed) and deletes it rather than leave a broken artifact.
 
 ## Version numbers
 
-Versions are dates, not promises: `2026.10.26-3` is the third build cut on
-26 October 2026, and the release tag is the same with a leading `v`
-(`v2026.10.26-3`). The counter is what keeps two builds of one day apart, in
-the order they were cut.
+A version says what a build contains, not when it was typed:
 
-`packaging/version.sh next` prints the version today's next build gets (it
-counts today's tags; it uses the local date, so set `TZ` when cutting from
-another timezone, e.g. `TZ=Asia/Shanghai ./packaging/version.sh next`),
-`packaging/version.sh set [version]` writes it to
-`Cargo.toml` and `Cargo.lock`, and `packaging/version.sh check [tag]` proves
-that a tree and a tag agree — CI and the release workflow both run it, so a
-mismatch fails before anything is published. `packaging/release.sh` does a
-whole cut: version, checks, commit, tag, push.
+```
+2610 . 3 - 2
+|    |   `-- fix counter: the 2nd fix (or change) for feature 3 and the ones before it
+|    `------ feature counter: starts at 1 each month, one step per feature update
+`----------- year and month (YYMM) the feature shipped in
+```
 
-Each package format spells the same number its own way: RPM splits it into
-`Version: 2026.10.26` and `Release: 3` (no dashes allowed in `Version`), Arch
-into `pkgver=2026.10.26` and `pkgrel=3`, and Debian takes `2026.10.26-3`
-unchanged as upstream-version/revision.
+So `2610.3` is the third feature update in October 2026, `2610.3-1` the first
+fix on top of it (and on top of everything before it), and `2611.1` the first
+feature update in November. Fixes keep the train and the feature they belong
+to, so they sort exactly where they belong: after `2610.3`, before `2610.4`.
+The release tag is the same string with a leading `v` (`v2610.3-1`);
+`Cargo.toml` carries it without the `v`.
 
+`packaging/version.sh next` prints the next feature release (it counts the
+tags of the current month; the month comes from the local date, so set `TZ`
+when cutting from another timezone, e.g.
+`TZ=Asia/Shanghai ./packaging/version.sh next`), `packaging/version.sh fix`
+prints the next fix release on top of what `Cargo.toml` currently says,
+`packaging/version.sh set [version|fix]` writes it to `Cargo.toml` and
+`Cargo.lock`, and `packaging/version.sh check [tag]` proves that a tree and a
+tag agree — CI and the release workflow both run it, so a mismatch fails
+before anything is published. `packaging/release.sh` does a whole cut:
+version, checks, commit, tag, push — `./packaging/release.sh` for a feature
+release, `./packaging/release.sh fix` for a fix.
+
+Each package format spells the same number its own way: RPM splits `2610.3-1`
+into `Version: 2610.3` and `Release: 1` (no dashes allowed in `Version`), Arch
+into `pkgver=2610.3` and `pkgrel=1`, and Debian takes `2610.3-1` unchanged as
+upstream-version/revision.
 ## Installing on Fedora with dnf
 
 The fork publishes its RPMs as a **dnf repository on GitHub Pages**, rebuilt on
