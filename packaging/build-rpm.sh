@@ -10,7 +10,7 @@ if [[ -z "$version" ]]; then
     exit 1
 fi
 # RPM has no room for a dash inside Version, so the project version
-# YYYY.MM.DD-N (packaging/version.sh) is split into Version and Release.
+# YYMM.N[-x] (packaging/version.sh) is split into Version and Release.
 ver=${version%%-*}
 rel=${version##*-}
 if [[ "$rel" == "$version" ]]; then

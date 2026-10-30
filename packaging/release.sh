@@ -25,7 +25,11 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-version=${1:-$(./packaging/version.sh next)}
+case "${1:-}" in
+    ""|next) version=$(./packaging/version.sh next) ;;
+    fix) version=$(./packaging/version.sh fix) ;;
+    *) version=$1 ;;
+esac
 ./packaging/version.sh set "$version"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
