@@ -1,3 +1,5 @@
+<img src="packaging/io.github.wraindrock.ipp_duplexd_fork.png" width="160" alt="ipp-duplexd-fork icon">
+
 # ipp-duplexd-fork — manual duplex printing via a virtual IPP printer
 
 **English** · [简体中文](README.zh-CN.md)
