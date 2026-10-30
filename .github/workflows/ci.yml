@@ -122,7 +122,7 @@ jobs:
         run: |
           set -eux
           entry=/usr/share/applications/io.github.wraindrock.ipp_duplexd_fork.desktop
-          icon=/usr/share/icons/hicolor/scalable/apps/io.github.wraindrock.ipp_duplexd_fork.svg
+          icon=/usr/share/icons/hicolor/512x512/apps/io.github.wraindrock.ipp_duplexd_fork.png
           test -f "$entry"
           test -s "$icon"
           grep -qx 'Type=Application' "$entry"
