@@ -1,15 +1,15 @@
 #!/bin/sh
 # The version has three parts:
 #
-#   2610 . 3 - 2
-#   |    |   |
-#   |    |   '-- fix counter: the 2nd fix (or change) for feature 3 and the
-#   |    |       features before it. Omitted on the feature release itself.
-#   |    '------ feature counter: starts at 1 each month and goes up by one
-#   |            for every feature update, so 2610.3 is the third one in
-#   |            October 2026.
-#   '----------- year and month (YYMM) the feature shipped in: the release
-#               train, which is what the major number used to be.
+#   26.10.3-2
+#   |  |   | |
+#   |  |   | '-- fix counter: the 2nd fix (or change) for feature 3 and the
+#   |  |   |     features before it. Omitted on the feature release itself.
+#   |  |   '---- feature counter: starts at 1 each month and goes up by one
+#   |  |         for every feature update, so 26.10.3 is the third one in
+#   |  |         October 2026.
+#   |  '-------- month
+#   '----------- year (two digits)
 #
 # A fix keeps the train and the feature it belongs to: 2610.3-1, 2610.3-2, and
 # those sort after 2610.3 and before 2610.4. That is the whole point -- the
@@ -32,30 +32,24 @@ current() {
     sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1
 }
 
-# Cargo needs three numbers, so the fix counter lives in the patch position:
-# Cargo.toml says 2610.3.0 for the feature release and 2610.3.2 after two fixes.
-# The tag (and everything a person reads) drops a zero patch and writes the
-# counter after a dash instead: v2610.3, v2610.3-2.
+# Cargo allows three numbers plus build metadata, so the fix counter rides in
+# the metadata: Cargo.toml says 26.10.3 for the feature release and 26.10.3+2
+# after two fixes. The tag (and everything a person reads) writes it after a
+# dash instead: v26.10.3, v26.10.3-2.
 shape_ok() {
-    printf '%s\n' "$1" | grep -Eq '^[0-9]{4}\.[0-9]+\.[0-9]+$'
+    printf '%s\n' "$1" | grep -Eq '^[0-9]{2}\.[0-9]{2}\.[0-9]+(\+[0-9]+)?$'
 }
 
-# 2610.3.2 -> 2610.3-2;  2610.3.0 -> 2610.3
+# 26.10.3+2 -> 26.10.3-2;  26.10.3 -> 26.10.3
 as_tag() {
-    version=$1
-    major=${version%%.*}
-    rest=${version#*.}
-    feature=${rest%%.*}
-    fix=${rest##*.}
-    if [ "$fix" = "0" ]; then
-        printf '%s.%s\n' "$major" "$feature"
-    else
-        printf '%s.%s-%s\n' "$major" "$feature" "$fix"
-    fi
+    case "$1" in
+        *+*) printf '%s-%s\n' "${1%%+*}" "${1##*+}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
 }
 
 train() {
-    date +%y%m
+    date +%y.%m
 }
 
 next_feature() {
@@ -63,16 +57,18 @@ next_feature() {
     highest=$(git tag -l "v$prefix.*" 2>/dev/null |
         sed -n "s/^v$prefix\.\([0-9][0-9]*\)\(-[0-9][0-9]*\)\{0,1\}\$/\1/p" |
         sort -n | tail -1)
-    printf '%s.%s.0\n' "$prefix" "$((${highest:-0} + 1))"
+    printf '%s.%s\n' "$prefix" "$((${highest:-0} + 1))"
 }
 
 next_fix() {
     version=$(current)
     shape_ok "$version" ||
-        { echo "Cargo.toml says '$version', which is not YYMM.N.X" >&2; exit 1; }
-    base=${version%.*}
-    last=${version##*.}
-    printf '%s.%s\n' "$base" "$((last + 1))"
+        { echo "Cargo.toml says '$version', which is not YY.MM.N[+x]" >&2; exit 1; }
+    case "$version" in
+        *+*) base=${version%%+*}; last=${version##*+} ;;
+        *) base=$version; last=0 ;;
+    esac
+    printf '%s+%s\n' "$base" "$((last + 1))"
 }
 
 write_version() {
@@ -98,19 +94,19 @@ case "${1:-}" in
         ;;
     set)
         case "${2:-}" in
-            "") version=$(next_feature) ;;
+            ""|next) version=$(next_feature) ;;
             fix) version=$(next_fix) ;;
             *) version=$2 ;;
         esac
         shape_ok "$version" ||
-            { echo "'$version' is not a version like 2610.3.0 or 2610.3.1" >&2; exit 2; }
+            { echo "'$version' is not a version like 26.10.3 or 26.10.3+1" >&2; exit 2; }
         write_version "$version"
         echo "version $version"
         ;;
     check)
         version=$(current)
         shape_ok "$version" ||
-            { echo "Cargo.toml says '$version', which is not YYMM.N.X" >&2; exit 1; }
+            { echo "Cargo.toml says '$version', which is not YY.MM.N[+x]" >&2; exit 1; }
         if [ -n "${2:-}" ]; then
             expected="v$(as_tag "$version")"
             if [ "$2" != "$expected" ]; then

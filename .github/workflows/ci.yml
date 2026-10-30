@@ -41,7 +41,7 @@ jobs:
       - name: Version number
         run: |
           ./packaging/version.sh check
-          if ./packaging/version.sh check v9901.1-1; then
+          if ./packaging/version.sh check v99.01.1-1; then
             echo "a tag that disagrees with Cargo.toml must be refused" >&2
             exit 1
           fi
