@@ -84,8 +84,10 @@ So `2610.3` is the third feature update in October 2026, `2610.3-1` the first
 fix on top of it (and on top of everything before it), and `2611.1` the first
 feature update in November. Fixes keep the train and the feature they belong
 to, so they sort exactly where they belong: after `2610.3`, before `2610.4`.
-The release tag is the same string with a leading `v` (`v2610.3-1`);
-`Cargo.toml` carries it without the `v`.
+The release tag is `v2610.3-1` (or `v2610.3` for a feature release). Cargo
+requires three numbers, so `Cargo.toml` keeps the fix counter in the patch
+position — `2610.3.0` for the feature, `2610.3.1` after one fix — and
+`packaging/version.sh as-tag` converts one spelling into the other.
 
 `packaging/version.sh next` prints the next feature release (it counts the
 tags of the current month; the month comes from the local date, so set `TZ`

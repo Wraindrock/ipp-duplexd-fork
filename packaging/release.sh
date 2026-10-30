@@ -32,8 +32,9 @@ case "${1:-}" in
 esac
 ./packaging/version.sh set "$version"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-    echo "tag v$version already exists" >&2
+tag=v$(./packaging/version.sh as-tag "$version")
+if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    echo "tag $tag already exists" >&2
     exit 1
 fi
 
@@ -46,7 +47,7 @@ cargo clippy --all-targets -- -D warnings
 shellcheck packaging/*.sh
 cargo build --all-targets --locked
 cargo test --features gui --locked
-./packaging/version.sh check "v$version"
+./packaging/version.sh check "$tag"
 
 echo "==> committing and tagging"
 git -c user.name=ian -c user.email=ian@localhost add -A
