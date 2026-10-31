@@ -73,41 +73,37 @@ was installed) and deletes it rather than leave a broken artifact.
 
 ## Version numbers
 
-A version says what a build contains, not when it was typed:
+Three numbers, each answering one question:
 
 ```
-26 . 10 . 3 - 2
-|    |    |   `-- fix counter: the 2nd fix (or change) for feature 3 and the ones before it
-|    |    `------ feature counter: starts at 1 each month, one step per feature update
-|    `----------- month
-`---------------- year
+1 . 4 . 27
+|   |   `-- iteration: goes up every time a package is cut
+|   `------ minor: a feature, or a change a user would notice
+`---------- major: a structural change (file format, architecture, something to migrate)
 ```
 
-So `26.10.3` is the third feature update in October 2026, `26.10.3-1` the first
-fix on top of it (and on top of everything before it), and `26.11.1` the first
-feature update in November. Fixes keep the train and the feature they belong
-to, so they sort exactly where they belong: after `26.10.3`, before `26.10.4`.
-The release tag is `v26.10.3-1` (or `v26.10.3` for a feature release). Cargo
-has no room for the fix counter in the number itself, so `Cargo.toml` puts it
-in the build metadata — `26.10.3` for the feature, `26.10.3+1` after one fix —
-and `packaging/version.sh as-tag` converts one spelling into the other.
+Raising a level resets everything to its right (`1.4.27` → minor → `1.5.0`), and
+a level grows as far as it likes while the ones on its left stay put. Every
+build gets its own iteration, so two packages never share a version and "the
+newest" is always well defined. The tag is the same string with a leading `v`
+(`v1.4.27`), and `Cargo.toml` carries it unchanged — it is valid semver as it
+stands, so what the binaries report and what the tag says cannot disagree.
 
-`packaging/version.sh next` prints the next feature release (it counts the
-tags of the current month; the month comes from the local date, so set `TZ`
-when cutting from another timezone, e.g.
-`TZ=Asia/Shanghai ./packaging/version.sh next`), `packaging/version.sh fix`
-prints the next fix release on top of what `Cargo.toml` currently says,
-`packaging/version.sh set [version|fix]` writes it to `Cargo.toml` and
-`Cargo.lock`, and `packaging/version.sh check [tag]` proves that a tree and a
-tag agree — CI and the release workflow both run it, so a mismatch fails
-before anything is published. `packaging/release.sh` does a whole cut:
-version, checks, commit, tag, push — `./packaging/release.sh` for a feature
-release, `./packaging/release.sh fix` for a fix.
+```sh
+./packaging/version.sh next     # 1.4.28, a new package of the same thing
+./packaging/version.sh minor    # 1.5.0, a feature
+./packaging/version.sh major    # 2.0.0, a structural change
+./packaging/version.sh check v1.4.27   # does the tree agree with the tag?
+```
 
-Each package format spells the same number its own way: RPM splits `26.10.3-1`
-into `Version: 26.10.3` and `Release: 1` (no dashes allowed in `Version`), Arch
-into `pkgver=26.10.3` and `pkgrel=1`, and Debian takes `26.10.3-1` unchanged as
-upstream-version/revision.
+`packaging/release.sh` takes the same words (`release.sh`, `release.sh minor`,
+`release.sh major`, or an explicit version) and does the whole cut: checks,
+version, commit, tag, push. `packaging/version.sh set [version|minor|major]`
+writes one into `Cargo.toml` and `Cargo.lock` without cutting anything.
+
+Each package format spells the same number its own way: RPM splits `1.4.27` into
+`Version: 1.4.27` and `Release: 1`, Arch into `pkgver=1.4.27` and `pkgrel=1`,
+and Debian takes `1.4.27` unchanged.
 ## Installing on Fedora with dnf
 
 The fork publishes its RPMs as a **dnf repository on GitHub Pages**, rebuilt on

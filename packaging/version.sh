@@ -1,30 +1,28 @@
 #!/bin/sh
-# The version has three parts:
+# The version is three numbers, and each one answers a different question:
 #
-#   26.10.3-2
-#   |  |   | |
-#   |  |   | '-- fix counter: the 2nd fix (or change) for feature 3 and the
-#   |  |   |     features before it. Omitted on the feature release itself.
-#   |  |   '---- feature counter: starts at 1 each month and goes up by one
-#   |  |         for every feature update, so 26.10.3 is the third one in
-#   |  |         October 2026.
-#   |  '-------- month
-#   '----------- year (two digits)
+#   1 . 4 . 27
+#   |   |   `-- iteration: goes up every time a package is cut, nothing else.
+#   |   `------ minor: a feature or a change a user would notice.
+#   `---------- major: a structural change (the file format, the architecture,
+#               something that has to be migrated).
 #
-# A fix keeps the train and the feature it belongs to: 2610.3-1, 2610.3-2, and
-# those sort after 2610.3 and before 2610.4. That is the whole point -- the
-# number says *what* a build contains, not when it was typed.
+# The rule is the usual one: raising a level resets the ones to its right to
+# zero (1.4.27 -> minor -> 1.5.0), and a level may grow as far as it likes while
+# the ones on its left stay put. Because every build gets its own iteration,
+# two packages never share a version and "the newest one" is always well
+# defined.
 #
-# The tag is the same string with a leading v (v2610.3-1); Cargo.toml carries it
-# without the v. The month comes from the local date, so honour TZ when cutting
-# from another timezone: TZ=Asia/Shanghai packaging/version.sh next
+# The tag is the same string with a leading v (v1.4.27); Cargo.toml carries it
+# without the v, and it is valid semver as it stands -- no suffixes, nothing to
+# translate, nothing that can disagree with what the binaries report.
 #
 # Usage:
-#   packaging/version.sh next             the next feature release (YYMM.N)
-#   packaging/version.sh fix              the next fix release (YYMM.N-x)
-#   packaging/version.sh set [version]    write it to Cargo.toml and Cargo.lock
-#   packaging/version.sh check [tag]      fail unless the shape is right and,
-#                                         with a tag, `v<version>` is that tag
+#   packaging/version.sh next              the next iteration (1.4.28)
+#   packaging/version.sh minor             the next minor, iteration reset (1.5.0)
+#   packaging/version.sh major             the next major, both reset (2.0.0)
+#   packaging/version.sh set [version|next|minor|major]
+#   packaging/version.sh check [tag]       the shape, and that a tag matches
 set -eu
 cd "$(dirname -- "$0")/.."
 
@@ -32,43 +30,41 @@ current() {
     sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1
 }
 
-# Cargo allows three numbers plus build metadata, so the fix counter rides in
-# the metadata: Cargo.toml says 26.10.3 for the feature release and 26.10.3+2
-# after two fixes. The tag (and everything a person reads) writes it after a
-# dash instead: v26.10.3, v26.10.3-2.
+# MAJOR.MINOR.ITERATION, e.g. 1.4.27
 shape_ok() {
-    printf '%s\n' "$1" | grep -Eq '^[0-9]{2}\.[0-9]{2}\.[0-9]+(\+[0-9]+)?$'
+    printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
 }
 
-# 26.10.3+2 -> 26.10.3-2;  26.10.3 -> 26.10.3
-as_tag() {
-    case "$1" in
-        *+*) printf '%s-%s\n' "${1%%+*}" "${1##*+}" ;;
-        *) printf '%s\n' "$1" ;;
-    esac
+parts() {
+    version=$1
+    major=${version%%.*}
+    rest=${version#*.}
+    minor=${rest%%.*}
+    iteration=${rest##*.}
 }
 
-train() {
-    date +%y.%m
-}
-
-next_feature() {
-    prefix=$(train)
-    highest=$(git tag -l "v$prefix.*" 2>/dev/null |
-        sed -n "s/^v$prefix\.\([0-9][0-9]*\)\(-[0-9][0-9]*\)\{0,1\}\$/\1/p" |
-        sort -n | tail -1)
-    printf '%s.%s\n' "$prefix" "$((${highest:-0} + 1))"
-}
-
-next_fix() {
+next_iteration() {
     version=$(current)
     shape_ok "$version" ||
-        { echo "Cargo.toml says '$version', which is not YY.MM.N[+x]" >&2; exit 1; }
-    case "$version" in
-        *+*) base=${version%%+*}; last=${version##*+} ;;
-        *) base=$version; last=0 ;;
-    esac
-    printf '%s+%s\n' "$base" "$((last + 1))"
+        { echo "Cargo.toml says '$version', which is not MAJOR.MINOR.ITERATION" >&2; exit 1; }
+    parts "$version"
+    printf '%s.%s.%s\n' "$major" "$minor" "$((iteration + 1))"
+}
+
+next_minor() {
+    version=$(current)
+    shape_ok "$version" ||
+        { echo "Cargo.toml says '$version', which is not MAJOR.MINOR.ITERATION" >&2; exit 1; }
+    parts "$version"
+    printf '%s.%s.0\n' "$major" "$((minor + 1))"
+}
+
+next_major() {
+    version=$(current)
+    shape_ok "$version" ||
+        { echo "Cargo.toml says '$version', which is not MAJOR.MINOR.ITERATION" >&2; exit 1; }
+    parts "$version"
+    printf '%s.0.0\n' "$((major + 1))"
 }
 
 write_version() {
@@ -84,40 +80,41 @@ write_version() {
 
 case "${1:-}" in
     next)
-        next_feature
+        next_iteration
         ;;
-    fix)
-        next_fix
+    minor)
+        next_minor
         ;;
-    as-tag)
-        as_tag "${2:-$(current)}"
+    major)
+        next_major
         ;;
     set)
         case "${2:-}" in
-            ""|next) version=$(next_feature) ;;
-            fix) version=$(next_fix) ;;
+            "") version=$(next_iteration) ;;
+            next|iteration) version=$(next_iteration) ;;
+            minor) version=$(next_minor) ;;
+            major) version=$(next_major) ;;
             *) version=$2 ;;
         esac
         shape_ok "$version" ||
-            { echo "'$version' is not a version like 26.10.3 or 26.10.3+1" >&2; exit 2; }
+            { echo "'$version' is not a version like 1.4.27" >&2; exit 2; }
         write_version "$version"
         echo "version $version"
         ;;
     check)
         version=$(current)
         shape_ok "$version" ||
-            { echo "Cargo.toml says '$version', which is not YY.MM.N[+x]" >&2; exit 1; }
+            { echo "Cargo.toml says '$version', which is not MAJOR.MINOR.ITERATION" >&2; exit 1; }
         if [ -n "${2:-}" ]; then
-            expected="v$(as_tag "$version")"
-            if [ "$2" != "$expected" ]; then
-                echo "tag $2 does not match Cargo.toml version $version (expected $expected)" >&2
+            if [ "$2" != "v$version" ]; then
+                echo "tag $2 does not match Cargo.toml version v$version" >&2
                 exit 1
             fi
         fi
         echo "version $version"
         ;;
     *)
-        echo "usage: $0 {next|fix|set [version|fix]|check [tag]}" >&2
+        echo "usage: $0 {next|minor|major|set [version|next|minor|major]|check [tag]}" >&2
         exit 2
         ;;
 esac

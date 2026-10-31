@@ -27,12 +27,13 @@ fi
 
 case "${1:-}" in
     ""|next) version=$(./packaging/version.sh next) ;;
-    fix) version=$(./packaging/version.sh fix) ;;
+    minor) version=$(./packaging/version.sh minor) ;;
+    major) version=$(./packaging/version.sh major) ;;
     *) version=$1 ;;
 esac
 ./packaging/version.sh set "$version"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-tag=v$(./packaging/version.sh as-tag "$version")
+tag=v$version
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     echo "tag $tag already exists" >&2
     exit 1
