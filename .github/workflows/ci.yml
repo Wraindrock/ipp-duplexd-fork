@@ -36,12 +36,12 @@ jobs:
       - name: Shellcheck
         run: shellcheck packaging/*.sh
 
-      # The version is YYMM.<feature>[-<fix>] (packaging/version.sh); a
-      # hand-edited tag or a stray "1.2.3" must fail.
+      # The version is MAJOR.MINOR.ITERATION (packaging/version.sh); a
+      # hand-edited tag or a version that disagrees must fail.
       - name: Version number
         run: |
           ./packaging/version.sh check
-          if ./packaging/version.sh check v99.01.1-1; then
+          if ./packaging/version.sh check v99.1.1; then
             echo "a tag that disagrees with Cargo.toml must be refused" >&2
             exit 1
           fi
