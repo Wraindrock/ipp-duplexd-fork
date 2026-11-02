@@ -49,6 +49,9 @@ pub struct Printer {
     /// Rotation of the backs: 0 or 180.
     #[serde(default = "rotate_default")]
     pub rotate_even: u32,
+    /// Which pages print first: `odd` (the default) or `even`.
+    #[serde(default = "first_default")]
+    pub first: String,
     /// Seconds to wait inside /flip before printing the backs by itself (0 = wait).
     #[serde(default)]
     pub auto_continue: u64,
@@ -85,6 +88,12 @@ fn gui_default() -> bool {
     true
 }
 
+fn first_default() -> String {
+    // Odd pages first is what every other manual duplex printer does; even
+    // first is the same flow started from the other side of the sheet.
+    "odd".to_string()
+}
+
 impl Printer {
     /// A printer with every optional field at its default.
     pub fn new(name: &str, listen: &str, real: &str) -> Self {
@@ -96,6 +105,7 @@ impl Printer {
             settle: settle_default(),
             poll: poll_default(),
             rotate_even: rotate_default(),
+            first: first_default(),
             auto_continue: 0,
             gui: gui_default(),
             note: String::new(),
@@ -282,6 +292,10 @@ impl Config {
             if printer.rotate_even != 0 && printer.rotate_even != 180 {
                 return Err(crate::l10n::tr(locale, "config.err.bad_rotate", &[]));
             }
+            match printer.first.as_str() {
+                "odd" | "even" => {}
+                _ => return Err(crate::l10n::tr(locale, "config.err.bad_first", &[])),
+            }
             if printer.settle > 600 {
                 return Err(crate::l10n::tr(locale, "config.err.bad_settle", &[]));
             }
@@ -348,6 +362,7 @@ real = "ipp://127.0.0.1:631/printers/laser"
         assert_eq!(printer.settle, 10);
         assert_eq!(printer.poll, 2);
         assert_eq!(printer.rotate_even, 0);
+        assert_eq!(printer.first, "odd");
         assert_eq!(printer.auto_continue, 0);
         assert!(printer.gui);
         assert_eq!(config.settings.language, None);
@@ -410,6 +425,10 @@ real = "ipp://127.0.0.1:631/printers/laser"
         let mut config = sample();
         config.printers[0].rotate_even = 90;
         assert!(!config.validate("en").unwrap_err().is_empty());
+
+        let mut config = sample();
+        config.printers[0].first = "middle".to_string();
+        assert!(config.validate("en").unwrap_err().contains("odd"));
 
         let mut config = sample();
         config.printers[0].poll = 0;

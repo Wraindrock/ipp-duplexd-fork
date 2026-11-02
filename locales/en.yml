@@ -22,6 +22,7 @@ daemon.usage: |
     --name NAME          printer name to advertise (default manual-duplex)
     --blank WHERE        blank-page padding for odd page counts:
                          leading (default) | trailing | none
+    --first SIDE         which pages print first: odd (default) or even
     --auto-continue N    print the backs N seconds after the odd pass
                          finishes instead of waiting for GET /flip
     --no-gui             do not open the flip-confirmation desktop dialog
@@ -44,6 +45,7 @@ daemon.err.bad_poll: "bad --poll"
 daemon.err.bad_settle: "bad --settle"
 daemon.err.unknown_arg: "unknown argument '%{arg}'"
 daemon.err.bad_blank: "--blank must be trailing, leading or none"
+daemon.err.bad_first: "--first must be odd or even"
 daemon.err.bad_rotate_value: "--rotate-even must be 0 or 180"
 daemon.err.printer_required: "--printer is required"
 daemon.err.bad_printer_uri: "bad printer URI '%{uri}': %{err}"
@@ -68,7 +70,7 @@ daemon.log.unsupported_op: "unsupported operation 0x%{op}"
 daemon.log.attr_fetch_failed: "cannot fetch printer attributes from real printer: %{err}"
 daemon.log.job_failed: "job %{id} failed: %{err}"
 daemon.log.job_summary: "job %{id} '%{name}': %{pages} pages, manual duplex"
-daemon.log.job_odd_done: "job %{id}: odd pages done. %{message}"
+daemon.log.job_first_done: "job %{id}: the first side is done. %{message}"
 daemon.log.printer_stopped: "stopping the virtual printer %{name}"
 daemon.log.reload_ok: "reloaded %{path}: %{count} virtual printers"
 daemon.log.reload_failed: "cannot reload %{path}: %{err}"
@@ -138,6 +140,7 @@ config.err.duplicate_listen: "two virtual printers listen on %{addr}"
 config.err.bad_listen: "bad listen address '%{addr}': %{err}"
 config.err.bad_real: "bad printer URI '%{real}': %{err}"
 config.err.bad_blank: "blank pages must be leading, trailing or none"
+config.err.bad_first: "first must be odd or even"
 config.err.bad_rotate: "rotate-even must be 0 or 180"
 config.err.bad_settle: "settle must be at most 600 seconds"
 config.err.bad_poll: "poll must be at least 1 second"
@@ -301,6 +304,10 @@ gui.window.field_blank_hint: "Where blank pages are dropped: before the split, a
 gui.window.blank_leading: "Before the split"
 gui.window.blank_trailing: "After the split"
 gui.window.blank_none: "Keep them"
+gui.window.field_first: "Print first"
+gui.window.field_first_hint: "Which pages to print first"
+gui.window.first_odd: "Odd pages"
+gui.window.first_even: "Even pages"
 gui.window.field_settle: "Settle time"
 gui.window.field_settle_hint: "Seconds to let the printer settle before sending the backs"
 gui.window.field_poll: "Poll interval"

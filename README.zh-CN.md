@@ -50,6 +50,8 @@ sudo dnf install ipp-duplexd-fork
 - **终端菜单**：`ipp-duplexd-fork-setup`（适合没有桌面的机器、SSH、脚本）
 
 添加第一台虚拟打印机时，程序会顺手装好 systemd 用户服务、注册 CUPS 队列。
+每台虚拟打印机可以选**先打奇数页还是先打偶数页**（窗口里的“打印行为”，
+配置文件里的 `first`，命令行是 `--first odd|even`，默认奇数页）。
 之后在打印对话框里就会多出一台打印机（默认名字是 `<真机队列>-duplex`）。
 
 ## 打印

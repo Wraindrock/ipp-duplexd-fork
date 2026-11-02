@@ -566,6 +566,63 @@ fn duplex_splits_pads_and_rotates() {
     );
 }
 
+/// Paper that is already punched wants the other side on the sheet first:
+/// the even pages go through first, ascending, and the backs (the odd pages)
+/// come after the flip, reversed -- the same pairing, the other way round.
+#[test]
+fn even_pages_print_first_when_asked() {
+    let t = setup(
+        "even-first",
+        &[
+            "--no-gui",
+            "--first",
+            "even",
+            "--blank",
+            "leading",
+            "--rotate-even",
+            "180",
+        ],
+        None,
+    );
+    let jid = print_job(
+        t.port,
+        &make_pdf(5),
+        "doc5-even",
+        vec![Attr::str(ipp::T_KEYWORD, "sides", "two-sided-long-edge")],
+    );
+    wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
+    {
+        let r = t.received.lock().unwrap();
+        // the even side is the short one for 5 pages, so it carries the
+        // blank; that side is printed first here, so the blank is here too
+        let geom = page_geometry(&r[0].doc, &t.dir.0);
+        assert_eq!(
+            geom.iter().map(|(w, _)| *w).collect::<Vec<_>>(),
+            vec![612, 602, 604],
+            "the even side comes first, padded"
+        );
+        assert!(
+            geom.iter().all(|(_, rot)| *rot == 180),
+            "the backs are the even side here, so they are rotated: {geom:?}"
+        );
+        assert_eq!(r[0].name, "doc5-even [even pages]");
+    }
+    assert!(http_get(t.port, "/flip").contains("printing the backs"));
+    wait_job_state(t.port, jid, &[9], Duration::from_secs(15));
+    let r = t.received.lock().unwrap();
+    let geom = page_geometry(&r[1].doc, &t.dir.0);
+    assert_eq!(
+        geom.iter().map(|(w, _)| *w).collect::<Vec<_>>(),
+        vec![605, 603, 601],
+        "the odd side comes second, reversed"
+    );
+    assert!(
+        geom.iter().all(|(_, rot)| *rot == 0),
+        "the odd side is not rotated: {geom:?}"
+    );
+    assert_eq!(r[1].name, "doc5-even [odd pages]");
+}
+
 #[test]
 fn one_sided_passes_through() {
     let t = setup("simplex", &["--no-gui"], None);

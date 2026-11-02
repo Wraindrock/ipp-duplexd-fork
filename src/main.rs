@@ -2,7 +2,8 @@
 //! duplex printing on a real IPP printer.
 //!
 //! Jobs printed with sides=two-sided-* (the advertised default) are split
-//! with qpdf: odd pages are printed first; when they are done the job stops
+//! with qpdf: the odd pages are printed first (or the even pages, with
+//! `--first even`); when they are done the job stops
 //! with reason media-needed until you flip the stack and hit GET /flip (or
 //! --auto-continue elapses); then the even pages are printed in reverse
 //! order. Jobs with sides=one-sided pass through untouched.
@@ -45,6 +46,7 @@ struct Settings {
     blank: String,      // trailing | leading | none
     auto_continue: u64, // seconds; 0 = wait for /flip or the dialog
     rotate_even: u32,   // 0 | 180
+    first: String,      // odd | even: which pages print first
     poll: u64,          // seconds between remote job-state polls
     gui: bool,          // open a desktop dialog to confirm the flip
     settle: u64,        // seconds to give the real printer before the backs
@@ -237,6 +239,7 @@ fn settings_of(printer: &cfg_file::Printer) -> Result<Settings, String> {
         blank: printer.blank.clone(),
         auto_continue: printer.auto_continue,
         rotate_even: printer.rotate_even,
+        first: printer.first.clone(),
         poll: printer.poll,
         gui: printer.gui,
         settle: printer.settle,
@@ -248,13 +251,14 @@ impl Settings {
     /// A cheap comparison key, so a reload only restarts what changed.
     fn fingerprint(&self) -> String {
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             self.listen,
             self.printer.uri,
             self.name,
             self.blank,
             self.auto_continue,
             self.rotate_even,
+            self.first,
             self.poll,
             self.gui,
             self.settle
@@ -452,6 +456,7 @@ fn legacy_printer(argv: &[String]) -> Result<cfg_file::Printer, String> {
         settle: settings.settle,
         poll: settings.poll,
         rotate_even: settings.rotate_even,
+        first: settings.first,
         auto_continue: settings.auto_continue,
         gui: settings.gui,
         note: settings.note,
@@ -483,6 +488,7 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
     let mut blank = "none".to_string();
     let mut auto_continue = 0u64;
     let mut rotate_even = 0u32;
+    let mut first = "odd".to_string();
     let mut poll = 2u64;
     let mut gui = true;
     let mut settle = 10u64;
@@ -514,6 +520,7 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
                     .parse()
                     .map_err(|_| t!("daemon.err.bad_rotate_even").to_string())?
             }
+            "--first" => first = val("--first")?,
             "--settle" => {
                 settle = val("--settle")?
                     .parse::<u64>()
@@ -542,6 +549,9 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
     if !matches!(rotate_even, 0 | 180) {
         return Err(t!("daemon.err.bad_rotate_value").to_string());
     }
+    if !matches!(first.as_str(), "odd" | "even") {
+        return Err(t!("daemon.err.bad_first").to_string());
+    }
     if !listen.starts_with("127.")
         && !listen.starts_with("localhost:")
         && !listen.starts_with("[::1]")
@@ -555,6 +565,7 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
         blank,
         auto_continue,
         rotate_even,
+        first,
         poll,
         gui,
         settle,
@@ -1597,18 +1608,37 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
         pages = npages
     ));
 
-    // pass 1: odd pages
-    qpdf(&[&doc, "--pages", ".", "1-z:odd", "--", &p("odd.pdf")])?;
+    // pass 1: the side `first` asks for. Odd pages first is the usual manual
+    // duplex; even first starts the same flow from the other side of the sheet.
+    // A one-page job has no even side; it is simply printed.
+    let first_even = ctx.cfg.first == "even" && npages > 1;
+    let first_sel = if npages <= 1 {
+        "1-z"
+    } else if first_even {
+        "1-z:even"
+    } else {
+        "1-z:odd"
+    };
+    qpdf(&[&doc, "--pages", ".", first_sel, "--", &p("first.pdf")])?;
+    let mut first = p("first.pdf");
+    let first_label = if first_even { "even" } else { "odd" };
+    if first_even {
+        first = adjust_even_pass(ctx, npages, first, &dir)?;
+    }
     set_job_state(
         ctx,
         id,
         J_PROCESSING,
-        JobMessage::key("daemon.job.printing_odd"),
+        JobMessage::key(if first_even {
+            "daemon.job.printing_even"
+        } else {
+            "daemon.job.printing_odd"
+        }),
     );
     let rid = forward(
         ctx,
-        &p("odd.pdf"),
-        &format!("{job_name} [odd pages]"),
+        &first,
+        &format!("{job_name} [{first_label} pages]"),
         &user,
         &attrs,
     )?;
@@ -1624,38 +1654,20 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
         return Ok(());
     }
 
-    // pass 2: even pages reversed. For an even page count the odd positions
-    // of the reversed range are the even pages descending; for an odd count
-    // the even positions.
-    let sel = if npages % 2 == 0 {
+    // pass 2: the other side, reversed. For an even page count the odd
+    // positions of the reversed range are the even pages descending; for an
+    // odd count the even positions.
+    let second_even = !first_even;
+    let sel = if (npages % 2 == 0) == second_even {
         "z-1:odd"
     } else {
         "z-1:even"
     };
-    qpdf(&[&doc, "--pages", ".", sel, "--", &p("even.pdf")])?;
-    let mut even = p("even.pdf");
-    if npages % 2 == 1 && ctx.cfg.blank != "none" {
-        std::fs::write(p("blank.pdf"), BLANK_PDF).map_err(|e| e.to_string())?;
-        let (a, ar, b, br) = if ctx.cfg.blank == "trailing" {
-            (even.clone(), "1-z", p("blank.pdf"), "1")
-        } else {
-            (p("blank.pdf"), "1", even.clone(), "1-z")
-        };
-        qpdf(&[
-            "--empty",
-            "--pages",
-            &a,
-            ar,
-            &b,
-            br,
-            "--",
-            &p("even-padded.pdf"),
-        ])?;
-        even = p("even-padded.pdf");
-    }
-    if ctx.cfg.rotate_even == 180 {
-        qpdf(&[&even, "--rotate=+180:1-z", "--", &p("even-rotated.pdf")])?;
-        even = p("even-rotated.pdf");
+    qpdf(&[&doc, "--pages", ".", sel, "--", &p("second.pdf")])?;
+    let mut second = p("second.pdf");
+    let second_label = if second_even { "even" } else { "odd" };
+    if second_even {
+        second = adjust_even_pass(ctx, npages, second, &dir)?;
     }
 
     // wait for the flip
@@ -1672,7 +1684,7 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
     let said = waiting.render(lang());
     set_job_state(ctx, id, J_STOPPED, waiting);
     log(&t!(
-        "daemon.log.job_odd_done",
+        "daemon.log.job_first_done",
         id = id,
         message = said.as_str()
     ));
@@ -1713,8 +1725,8 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
     );
     let rid = forward(
         ctx,
-        &even,
-        &format!("{job_name} [even pages]"),
+        &second,
+        &format!("{job_name} [{second_label} pages]"),
         &user,
         &attrs,
     )?;
@@ -1722,6 +1734,44 @@ fn process_job(ctx: &Arc<Ctx>, id: i32, data: Vec<u8>, attrs: Vec<Attr>) -> Resu
     set_job_state(ctx, id, J_COMPLETED, JobMessage::key("daemon.job.done"));
     log(&t!("daemon.log.job_completed", id = id));
     Ok(())
+}
+
+/// The even side of an odd-length document is one sheet short: the blank page
+/// pads it, and `rotate_even` turns it. Both belong to the even side wherever
+/// it is printed, so the options keep the same meaning whichever pass it lands
+/// in (`--first even` puts it in the first pass).
+fn adjust_even_pass(
+    ctx: &Ctx,
+    npages: u32,
+    path: String,
+    dir: &std::path::Path,
+) -> Result<String, String> {
+    let p = |n: &str| dir.join(n).to_string_lossy().into_owned();
+    let mut path = path;
+    if npages % 2 == 1 && ctx.cfg.blank != "none" {
+        std::fs::write(p("blank.pdf"), BLANK_PDF).map_err(|e| e.to_string())?;
+        let (a, ar, b, br) = if ctx.cfg.blank == "trailing" {
+            (path.clone(), "1-z", p("blank.pdf"), "1")
+        } else {
+            (p("blank.pdf"), "1", path.clone(), "1-z")
+        };
+        qpdf(&[
+            "--empty",
+            "--pages",
+            &a,
+            ar,
+            &b,
+            br,
+            "--",
+            &p("even-padded.pdf"),
+        ])?;
+        path = p("even-padded.pdf");
+    }
+    if ctx.cfg.rotate_even == 180 {
+        qpdf(&[&path, "--rotate=+180:1-z", "--", &p("even-rotated.pdf")])?;
+        path = p("even-rotated.pdf");
+    }
+    Ok(path)
 }
 
 struct Cleanup(std::path::PathBuf);

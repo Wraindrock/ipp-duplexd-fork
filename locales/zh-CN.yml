@@ -21,6 +21,7 @@ daemon.usage: |
     --name NAME          对外公布的打印机名（默认 manual-duplex）
     --blank WHERE        页数为奇数时空白页补在哪里：
                          leading（默认，放前面）| trailing（放后面）| none
+    --first SIDE         先打哪一面：odd（默认，奇数页）或 even（偶数页）
     --auto-continue N    奇数页打完后等 N 秒自动打印背面，
                          不再等待 GET /flip
     --no-gui             不弹出翻纸确认对话框（zenity/kdialog/xmessage），
@@ -40,6 +41,7 @@ daemon.err.bad_poll: "--poll 取值无效"
 daemon.err.bad_settle: "--settle 取值无效"
 daemon.err.unknown_arg: "无法识别的参数 '%{arg}'"
 daemon.err.bad_blank: "--blank 只能是 trailing、leading 或 none"
+daemon.err.bad_first: "--first 只能是 odd 或 even"
 daemon.err.bad_rotate_value: "--rotate-even 只能是 0 或 180"
 daemon.err.printer_required: "必须指定 --printer"
 daemon.err.bad_printer_uri: "打印机 URI 无效 '%{uri}'：%{err}"
@@ -64,7 +66,7 @@ daemon.log.unsupported_op: "不支持的操作 0x%{op}"
 daemon.log.attr_fetch_failed: "取不到真实打印机的属性：%{err}"
 daemon.log.job_failed: "作业 %{id} 失败：%{err}"
 daemon.log.job_summary: "作业 %{id}“%{name}”：共 %{pages} 页，手动双面"
-daemon.log.job_odd_done: "作业 %{id}：奇数页打完了。%{message}"
+daemon.log.job_first_done: "作业 %{id}：先打的那一面打完了。%{message}"
 daemon.log.printer_stopped: "正在停止虚拟打印机 %{name}"
 daemon.log.reload_ok: "已重新加载 %{path}：%{count} 个虚拟打印机"
 daemon.log.reload_failed: "重新加载 %{path} 失败：%{err}"
@@ -134,6 +136,7 @@ config.err.duplicate_listen: "有两个虚拟打印机都监听 %{addr}"
 config.err.bad_listen: "监听地址 '%{addr}' 无效：%{err}"
 config.err.bad_real: "打印机 URI '%{real}' 无效：%{err}"
 config.err.bad_blank: "blank 只能是 leading、trailing 或 none"
+config.err.bad_first: "first 只能是 odd 或 even"
 config.err.bad_rotate: "rotate-even 只能是 0 或 180"
 config.err.bad_settle: "settle 最多 600 秒"
 config.err.bad_poll: "poll 至少 1 秒"
@@ -294,6 +297,10 @@ gui.window.field_blank_hint: "空白页在哪里丢掉：拆页前、拆页后�
 gui.window.blank_leading: "拆页前"
 gui.window.blank_trailing: "拆页后"
 gui.window.blank_none: "保留"
+gui.window.field_first: "先打哪一面"
+gui.window.field_first_hint: "先打印哪一面"
+gui.window.first_odd: "奇数页"
+gui.window.first_even: "偶数页"
 gui.window.field_settle: "静置时间"
 gui.window.field_settle_hint: "发送背面之前，让打印机静置多少秒"
 gui.window.field_poll: "轮询间隔"

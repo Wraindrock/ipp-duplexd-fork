@@ -1587,6 +1587,22 @@ fn blank_value(index: u32) -> &'static str {
     }
 }
 
+/// The combo entry for a `first` value.
+fn first_index(first: &str) -> u32 {
+    match first {
+        "even" => 1,
+        _ => 0,
+    }
+}
+
+/// The `first` value behind a combo entry.
+fn first_value(index: u32) -> &'static str {
+    match index {
+        1 => "even",
+        _ => "odd",
+    }
+}
+
 fn editor(state: &Rc<State>, index: Option<usize>) {
     let locale = state.locale.get();
     let labels = gui::window_labels(locale);
@@ -1642,6 +1658,15 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         ]))
         .build();
     blank.set_selected(blank_index(&current.blank));
+    let first = adw::ComboRow::builder()
+        .title(&labels.field_first)
+        .subtitle(&labels.field_first_hint)
+        .model(&gtk::StringList::new(&[
+            labels.first_odd.as_str(),
+            labels.first_even.as_str(),
+        ]))
+        .build();
+    first.set_selected(first_index(&current.first));
     let settle = spin_row(
         &labels.field_settle,
         &labels.field_settle_hint,
@@ -1676,6 +1701,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     let tuning = gtk::ListBox::new();
     tuning.add_css_class("boxed-list");
     tuning.append(&blank);
+    tuning.append(&first);
     tuning.append(&settle);
     tuning.append(&poll);
     tuning.append(&rotate);
@@ -1825,6 +1851,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
             printer.real = real.text().to_string();
             printer.note = note.text().to_string();
             printer.blank = blank_value(blank.selected()).to_string();
+            printer.first = first_value(first.selected()).to_string();
             printer.settle = settle.value().round() as u64;
             printer.poll = poll.value().round().max(1.0) as u64;
             printer.rotate_even = if rotate.is_active() { 180 } else { 0 };
