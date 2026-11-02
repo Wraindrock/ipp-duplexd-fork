@@ -124,6 +124,14 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
 
 %changelog
 
+* Mon Nov 02 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.1.0
+- Each virtual printer can print the even pages first instead of the odd ones:
+  `first` in config.toml, `--first odd|even` on the command line, a row in
+  the window's printing group and the same question in the terminal wizard.
+  It is the same manual duplex flow started from the other side, for paper
+  that is already punched or printed on one side; the default stays odd, so
+  existing printers are unchanged.
+
 * Wed Oct 28 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 2026.10.28-6
 - The AppImage carries update information (gh-releases-zsync) and every release
   now attaches the matching .zsync, so Gear Lever's "check for updates" and
