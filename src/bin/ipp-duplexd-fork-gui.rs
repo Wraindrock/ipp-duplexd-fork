@@ -1756,22 +1756,35 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     fields.append(&real);
     fields.append(&note);
 
-    // The dialog grew two groups of settings; keep it inside the screen and
-    // let it scroll instead of pushing the buttons off the bottom.
+    // The dialog grew two groups of settings; let it scroll instead of pushing
+    // the buttons off the bottom.
     let scroller = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_height(true)
         .max_content_height(560)
-        // A fixed shape for the editor: wide enough for the fields, narrow
-        // enough that the wrapped hints read as a column instead of a ribbon.
-        .min_content_width(360)
-        .max_content_width(430)
         .child(&body)
         .build();
-    let dialog = adw::AlertDialog::builder()
-        .heading(&heading)
-        .extra_child(&scroller)
+    scroller.set_vexpand(true);
+
+    // Not an AlertDialog: it caps its width at 372sp (600sp when it asks for a
+    // wide layout), which is narrower than a printer URI or a note, so the rows
+    // ellipsized their values. An AdwDialog is a real dialog window that takes
+    // the width it is given and adapts its presentation to the screen.
+    let save = gtk::Button::with_label(&labels.save);
+    save.add_css_class("suggested-action");
+    let cancel = gtk::Button::with_label(&labels.cancel);
+    let header = adw::HeaderBar::new();
+    header.set_title_widget(Some(&adw::WindowTitle::new(&heading, "")));
+    header.pack_start(&cancel);
+    header.pack_end(&save);
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&header);
+    toolbar.set_content(Some(&scroller));
+    let dialog = adw::Dialog::builder()
+        .content_width(520)
+        .child(&toolbar)
         .build();
+    dialog.set_default_widget(Some(&save));
 
     match index {
         // Editing an existing printer: the fields are the point.
@@ -1867,18 +1880,17 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         }
     }
 
-    dialog.add_response("cancel", &labels.cancel);
-    dialog.add_response("save", &labels.save);
-    dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
-    dialog.set_default_response(Some("save"));
-    dialog.set_close_response("cancel");
+    {
+        let dialog = dialog.clone();
+        cancel.connect_clicked(move |_| {
+            dialog.close();
+        });
+    }
 
     {
         let state = state.clone();
-        dialog.connect_response(None, move |_, response| {
-            if response != "save" {
-                return;
-            }
+        let dialog = dialog.clone();
+        save.connect_clicked(move |_| {
             let mut candidate = state.config.borrow().clone();
             let previous_name = index.map(|index| candidate.printers[index].name.clone());
             let mut printer = match index {
@@ -1919,6 +1931,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
                     let _ = queues::remove(&previous);
                 }
             }
+            dialog.close();
         });
     }
 
