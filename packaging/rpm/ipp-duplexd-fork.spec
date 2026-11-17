@@ -124,6 +124,18 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
 
 %changelog
 
+* Tue Nov 17 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.0
+- The backs can print forwards as well as backwards: `backs` in config.toml,
+  `--backs reverse|forward` on the command line, a row in the window's
+  printing group and the same question in the terminal wizard. Reverse stays
+  the default, so existing printers are unchanged; forward is for printers
+  whose output stack pairs the sheets the other way round.
+- An odd page count now gets the page it is missing, appended to the document
+  before the split (`blank = "auto"`, the new default; `none` skips it). The
+  pad lands on the correct sheet whichever way the backs walk, which the old
+  hand-placed leading/trailing could not; those values still load and mean
+  auto. Without it the backs came out one sheet off.
+
 * Mon Nov 02 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.1.0
 - Each virtual printer can print the even pages first instead of the odd ones:
   `first` in config.toml, `--first odd|even` on the command line, a row in
