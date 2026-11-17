@@ -124,6 +124,14 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
 
 %changelog
 
+* Tue Nov 17 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.1
+- The backs print forwards by default now (`backs = "forward"`,
+  `--backs forward`); `reverse` stays for the printers that stack the sheets
+  the other way round. `first` still defaults to odd, and the page an odd page
+  count is missing is still padded by default.
+- The printing group wraps its hints and the editor keeps a fixed comfortable
+  width instead of growing sideways with the longest subtitle.
+
 * Tue Nov 17 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.0
 - The backs can print forwards as well as backwards: `backs` in config.toml,
   `--backs reverse|forward` on the command line, a row in the window's
