@@ -332,6 +332,7 @@ fn add_printer(config: &mut Config) {
     if confirm(&t!("setup.ask.advanced"), false) {
         printer.blank = ask(&t!("gui.window.field_blank"), &printer.blank);
         printer.first = ask(&t!("gui.window.field_first"), &printer.first);
+        printer.backs = ask(&t!("gui.window.field_backs"), &printer.backs);
         printer.settle = ask_number(&t!("gui.window.field_settle"), printer.settle);
         printer.poll = ask_number(&t!("gui.window.field_poll"), printer.poll);
         printer.rotate_even = if confirm(&t!("gui.window.field_rotate"), printer.rotate_even == 180)
@@ -357,6 +358,7 @@ fn edit_printer(config: &mut Config, index: usize) {
     printer.note = ask(&t!("gui.window.field_note"), &printer.note);
     printer.blank = ask(&t!("gui.window.field_blank"), &printer.blank);
     printer.first = ask(&t!("gui.window.field_first"), &printer.first);
+    printer.backs = ask(&t!("gui.window.field_backs"), &printer.backs);
     printer.settle = ask_number(&t!("gui.window.field_settle"), printer.settle);
     printer.poll = ask_number(&t!("gui.window.field_poll"), printer.poll);
     printer.rotate_even = if confirm(&t!("gui.window.field_rotate"), printer.rotate_even == 180) {

@@ -1569,11 +1569,11 @@ fn spin_row(title: &str, subtitle: &str, value: u64, min: f64, max: f64) -> adw:
     row
 }
 
-/// The combo entry for a `blank` value.
+/// The combo entry for a `blank` value. The old `leading`/`trailing` configs
+/// both land on "pad": the position follows the split now.
 fn blank_index(blank: &str) -> u32 {
     match blank {
-        "trailing" => 1,
-        "none" => 2,
+        "none" => 1,
         _ => 0,
     }
 }
@@ -1581,9 +1581,8 @@ fn blank_index(blank: &str) -> u32 {
 /// The `blank` value behind a combo entry.
 fn blank_value(index: u32) -> &'static str {
     match index {
-        1 => "trailing",
-        2 => "none",
-        _ => "leading",
+        1 => "none",
+        _ => "auto",
     }
 }
 
@@ -1600,6 +1599,22 @@ fn first_value(index: u32) -> &'static str {
     match index {
         1 => "even",
         _ => "odd",
+    }
+}
+
+/// The combo entry for a `backs` value.
+fn backs_index(backs: &str) -> u32 {
+    match backs {
+        "forward" => 1,
+        _ => 0,
+    }
+}
+
+/// The `backs` value behind a combo entry.
+fn backs_value(index: u32) -> &'static str {
+    match index {
+        1 => "forward",
+        _ => "reverse",
     }
 }
 
@@ -1652,8 +1667,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         .title(&labels.field_blank)
         .subtitle(&labels.field_blank_hint)
         .model(&gtk::StringList::new(&[
-            labels.blank_leading.as_str(),
-            labels.blank_trailing.as_str(),
+            labels.blank_auto.as_str(),
             labels.blank_none.as_str(),
         ]))
         .build();
@@ -1667,6 +1681,15 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         ]))
         .build();
     first.set_selected(first_index(&current.first));
+    let backs = adw::ComboRow::builder()
+        .title(&labels.field_backs)
+        .subtitle(&labels.field_backs_hint)
+        .model(&gtk::StringList::new(&[
+            labels.backs_reverse.as_str(),
+            labels.backs_forward.as_str(),
+        ]))
+        .build();
+    backs.set_selected(backs_index(&current.backs));
     let settle = spin_row(
         &labels.field_settle,
         &labels.field_settle_hint,
@@ -1702,6 +1725,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     tuning.add_css_class("boxed-list");
     tuning.append(&blank);
     tuning.append(&first);
+    tuning.append(&backs);
     tuning.append(&settle);
     tuning.append(&poll);
     tuning.append(&rotate);
@@ -1852,6 +1876,7 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
             printer.note = note.text().to_string();
             printer.blank = blank_value(blank.selected()).to_string();
             printer.first = first_value(first.selected()).to_string();
+            printer.backs = backs_value(backs.selected()).to_string();
             printer.settle = settle.value().round() as u64;
             printer.poll = poll.value().round().max(1.0) as u64;
             printer.rotate_even = if rotate.is_active() { 180 } else { 0 };

@@ -473,11 +473,12 @@ language = "zh-CN"          # optional; defaults to the environment
 name = "manual-duplex"
 listen = "127.0.0.1:6632"
 real = "ipp://127.0.0.1:631/printers/laser"
-blank = "none"              # leading, trailing or none
+blank = "auto"              # auto, or none to skip the missing page
 settle = 10
 poll = 2
 rotate_even = 0
 first = "odd"               # odd, or even to print the even pages first
+backs = "reverse"           # reverse, or forward for the other output stack
 auto_continue = 0           # 0 = wait for GET /flip
 gui = true
 
@@ -644,11 +645,12 @@ cargo test
 | `--printer URI` | (required) | Real printer: `ipp://host[:port]/path` |
 | `--listen ADDR:PORT` | `127.0.0.1:6632` | Listen address (warns if non-loopback) |
 | `--name NAME` | `manual-duplex` | Printer name to advertise |
-| `--blank WHERE` | `none` | Blank-page padding of the even pass for odd page counts: `leading`, `trailing`, `none`. Switch if the last page of odd-count documents lands on the wrong sheet. |
+| `--blank auto\|none` | `auto` | Pads the page an odd page count does not have, at the end of the document, so the printer does not put every back one sheet off. `none` skips it; the old `leading`/`trailing` are accepted and mean `auto`. |
 | `--first odd\|even` | `odd` | Which pages print on the first pass. `even` prints the even pages first, then the odd pages after the flip; the pairing and the flip itself do not change. |
+| `--backs reverse\|forward` | `reverse` | Direction of the second pass (the backs): `reverse` prints the highest page first, `forward` the lowest. Depends on how your printer's output stack comes out; see [Flip direction](#behavior-details). |
 | `--auto-continue N` | off | Print the backs N seconds after the odd pass finishes instead of waiting for `/flip` (takes precedence over `--gui`) |
 | `--no-gui` | (gui on) | Disable the flip dialog. By default the GTK4 window shipped with the packages (then zenity, kdialog, or xmessage — first one that runs) opens when it is time to flip; clicking OK prints the backs. `/flip` keeps working in parallel; a dismissed or failed dialog never cancels the job, and without any dialog tool ipp-duplexd-fork just waits for `/flip`. |
-| `--rotate-even 0\|180` | `0` | Rotation of the even pages; set to `0` if the backs come out upside down for your flip direction |
+| `--rotate-even 0\|180` | `0` | Rotation of the even pages; set to `180` if the backs come out upside down for your flip direction |
 | `--poll N` | `2` | Seconds between job-state polls of the real printer |
 | `--settle N` | `10` | Seconds to give the real printer to finish and reset after the odd pass. The backs are only sent once it reports `printer-state=idle`; if it stays busy or unreachable for `N` seconds they are sent anyway, and a transient rejection is retried. `0` sends them straight away. |
 | `--lang CODE` | from the environment | Language of the messages and the status page (`en`, `zh-CN`); see [Languages](#languages) |
@@ -682,16 +684,28 @@ cargo test
   copies, collated) and `page-ranges` are applied locally before the split.
   `number-up` is not forwarded — it would change the pagination underneath
   the split.
-- **Odd page counts** get a blank page padded into the even pass so the
-  sheet pairing stays aligned (see `--blank`).
+- **Odd page counts** leave the last sheet's back without a page. With
+  `--blank auto` (the default) that missing page — the one after the last —
+  is appended to the document, so the split carries it to the even side and
+  the printer does not shift every back by one sheet. Its position follows the
+  pass direction on its own; nothing has to be placed by hand.
 - **Which pages print first** is a per-printer option (`--first`, default
   `odd`). `even` prints the even pages first, ascending, and the odd pages
   after the flip, reversed. The blank padding and `--rotate-even` stay with
   the even pages, so the flip itself is the same either way.
+- **Which way the backs walk** is its own per-printer option (`--backs`,
+  default `reverse`). `forward` walks the second pass from the lowest page to
+  the highest, which pairs the other way round on printers that stack the
+  sheets the opposite way.
 - **Cancel** works mid-job: the remote pass is canceled best-effort.
 - **Flip direction depends on your printer.** Odd-first + reversed evens is
-  the standard scheme for face-up output stacks. Do one two-page test print
-  to learn the right flip; use `--rotate-even 0` if backs are upside down.
+  the pairing for a face-down output stack, which is what most printers use:
+  the sheet with the highest page is fed first after the flip, so its back
+  carries the highest even page. A printer that stacks face up (or a
+  straight-through rear tray) wants `--backs forward` instead. Use a
+  four-page test document to tell the two apart — a two-page one has a single
+  back and cannot show the order — and `--rotate-even 180` if the backs come
+  out upside down.
 - **`--gui` under systemd**: if the dialog does not appear, the user
   session's display variables are missing from the service environment;
   run `systemctl --user import-environment DISPLAY WAYLAND_DISPLAY` once

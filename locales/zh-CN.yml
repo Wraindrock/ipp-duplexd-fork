@@ -19,15 +19,17 @@ daemon.usage: |
                          管理窗口负责写它，POST /reload 会重新读取）
     --listen ADDR:PORT   监听地址（默认 127.0.0.1:6632）
     --name NAME          对外公布的打印机名（默认 manual-duplex）
-    --blank WHERE        页数为奇数时空白页补在哪里：
-                         leading（默认，放前面）| trailing（放后面）| none
+    --blank WHERE        奇数页文档补上缺失的那一页：auto（默认）| none（不补）；
+                         旧值 leading/trailing 等同于 auto
     --first SIDE         先打哪一面：odd（默认，奇数页）或 even（偶数页）
+    --backs ORDER        第二遍（背面）的顺序：reverse（默认，逆序）或
+                         forward（正序）
     --auto-continue N    奇数页打完后等 N 秒自动打印背面，
                          不再等待 GET /flip
     --no-gui             不弹出翻纸确认对话框（zenity/kdialog/xmessage），
                          只靠 GET /flip
-    --rotate-even 0|180  把偶数页旋转 180 度（默认 180；如果按你的翻面
-                         方向背面出来是倒着的，就改成 0）
+    --rotate-even 0|180  把偶数页旋转 180 度（默认 0；如果按你的翻面
+                         方向背面出来是倒着的，就改成 180）
     --poll N             查询真实打印机作业状态的间隔秒数（默认 2）
     --settle N           奇数页打印完后等真实打印机恢复的秒数（默认 10；
                          期间等打印机空闲，超时就直接送偶数页）
@@ -40,8 +42,9 @@ daemon.err.bad_rotate_even: "--rotate-even 取值无效"
 daemon.err.bad_poll: "--poll 取值无效"
 daemon.err.bad_settle: "--settle 取值无效"
 daemon.err.unknown_arg: "无法识别的参数 '%{arg}'"
-daemon.err.bad_blank: "--blank 只能是 trailing、leading 或 none"
+daemon.err.bad_blank: "--blank 只能是 auto 或 none（旧的 leading/trailing 等同 auto）"
 daemon.err.bad_first: "--first 只能是 odd 或 even"
+daemon.err.bad_backs: "--backs 只能是 reverse 或 forward"
 daemon.err.bad_rotate_value: "--rotate-even 只能是 0 或 180"
 daemon.err.printer_required: "必须指定 --printer"
 daemon.err.bad_printer_uri: "打印机 URI 无效 '%{uri}'：%{err}"
@@ -135,8 +138,9 @@ config.err.duplicate_name: "有两个虚拟打印机都叫 '%{name}'"
 config.err.duplicate_listen: "有两个虚拟打印机都监听 %{addr}"
 config.err.bad_listen: "监听地址 '%{addr}' 无效：%{err}"
 config.err.bad_real: "打印机 URI '%{real}' 无效：%{err}"
-config.err.bad_blank: "blank 只能是 leading、trailing 或 none"
+config.err.bad_blank: "blank 只能是 auto 或 none（旧的 leading/trailing 等同 auto）"
 config.err.bad_first: "first 只能是 odd 或 even"
+config.err.bad_backs: "backs 只能是 reverse 或 forward"
 config.err.bad_rotate: "rotate-even 只能是 0 或 180"
 config.err.bad_settle: "settle 最多 600 秒"
 config.err.bad_poll: "poll 至少 1 秒"
@@ -292,15 +296,18 @@ gui.window.ipp_recover_body: "driverless 需要 ipp-usb 在端口上应答。它
 gui.window.ipp_recover_action: "切回 IPP"
 gui.window.queue_busy: "正在注册 CUPS 打印队列…"
 gui.window.queue_registered: "CUPS 打印队列已注册"
-gui.window.field_blank: "空白页"
-gui.window.field_blank_hint: "空白页在哪里丢掉：拆页前、拆页后，或者保留"
-gui.window.blank_leading: "拆页前"
-gui.window.blank_trailing: "拆页后"
-gui.window.blank_none: "保留"
+gui.window.field_blank: "缺失的一页"
+gui.window.field_blank_hint: "页数为奇数时补上不存在的那一页，背面才不会整体错一张纸"
+gui.window.blank_auto: "补上（推荐）"
+gui.window.blank_none: "不补"
 gui.window.field_first: "先打哪一面"
 gui.window.field_first_hint: "先打印哪一面"
 gui.window.first_odd: "奇数页"
 gui.window.first_even: "偶数页"
+gui.window.field_backs: "背面打印顺序"
+gui.window.field_backs_hint: "第二遍打印另一面的顺序；背面和正面对不上时切换它"
+gui.window.backs_reverse: "逆序（末页先打）"
+gui.window.backs_forward: "正序（首页先打）"
 gui.window.field_settle: "静置时间"
 gui.window.field_settle_hint: "发送背面之前，让打印机静置多少秒"
 gui.window.field_poll: "轮询间隔"

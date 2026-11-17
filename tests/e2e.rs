@@ -593,13 +593,13 @@ fn even_pages_print_first_when_asked() {
     wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
     {
         let r = t.received.lock().unwrap();
-        // the even side is the short one for 5 pages, so it carries the
-        // blank; that side is printed first here, so the blank is here too
+        // The page that does not exist is the last one (page 6), so it lands
+        // last in this ascending pass: 2, 4, then the blank.
         let geom = page_geometry(&r[0].doc, &t.dir.0);
         assert_eq!(
             geom.iter().map(|(w, _)| *w).collect::<Vec<_>>(),
-            vec![612, 602, 604],
-            "the even side comes first, padded"
+            vec![602, 604, 612],
+            "the even side comes first, with the missing page last"
         );
         assert!(
             geom.iter().all(|(_, rot)| *rot == 180),
@@ -621,6 +621,59 @@ fn even_pages_print_first_when_asked() {
         "the odd side is not rotated: {geom:?}"
     );
     assert_eq!(r[1].name, "doc5-even [odd pages]");
+}
+
+/// Some printers stack the sheets the other way round, so the backs have to
+/// walk forwards (2, 4, ...) instead of backwards (4, 2, ...). The fronts are
+/// the same either way.
+#[test]
+fn the_backs_can_print_forward() {
+    let t = setup("backs-forward", &["--no-gui", "--backs", "forward"], None);
+    let jid = print_job(
+        t.port,
+        &make_pdf(4),
+        "doc4-forward",
+        vec![Attr::str(ipp::T_KEYWORD, "sides", "two-sided-long-edge")],
+    );
+    wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
+    {
+        let r = t.received.lock().unwrap();
+        assert_eq!(
+            widths(&r[0].doc, &t.dir.0),
+            vec![601, 603],
+            "the fronts do not change with the backs' order"
+        );
+        assert_eq!(r[0].name, "doc4-forward [odd pages]");
+    }
+    assert!(http_get(t.port, "/flip").contains("printing the backs"));
+    wait_job_state(t.port, jid, &[9], Duration::from_secs(15));
+    let r = t.received.lock().unwrap();
+    assert_eq!(
+        widths(&r[1].doc, &t.dir.0),
+        vec![602, 604],
+        "forward: 2 then 4"
+    );
+    assert_eq!(r[1].name, "doc4-forward [even pages]");
+}
+
+/// An odd page count leaves the last sheet's back without a page. That page is
+/// padded by default, and it lands where it is missing -- last in the even
+/// side -- so the printer does not put every back one sheet off.
+#[test]
+fn the_missing_page_is_padded_by_default() {
+    let t = setup("pad-default", &["--no-gui"], None);
+    let jid = print_job(
+        t.port,
+        &make_pdf(5),
+        "doc5-pad",
+        vec![Attr::str(ipp::T_KEYWORD, "sides", "two-sided-long-edge")],
+    );
+    wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
+    assert!(http_get(t.port, "/flip").contains("printing the backs"));
+    wait_job_state(t.port, jid, &[9], Duration::from_secs(15));
+    let r = t.received.lock().unwrap();
+    // reversed: the blank (612) comes first, then 4 and 2
+    assert_eq!(widths(&r[1].doc, &t.dir.0), vec![612, 604, 602]);
 }
 
 #[test]

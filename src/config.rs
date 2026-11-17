@@ -37,7 +37,8 @@ pub struct Printer {
     pub listen: String,
     /// The real printer's `ipp://` (or `http://`) endpoint.
     pub real: String,
-    /// Where blank pages are kept: `leading`, `trailing` or `none`.
+    /// Whether an odd page count gets the page that does not exist, so the
+    /// backs line up: `auto` (the default) or `none`.
     #[serde(default = "blank_default")]
     pub blank: String,
     /// Seconds to let the real printer settle before the backs are sent.
@@ -52,6 +53,11 @@ pub struct Printer {
     /// Which pages print first: `odd` (the default) or `even`.
     #[serde(default = "first_default")]
     pub first: String,
+    /// Which way the second pass (the backs) walks the other side: `reverse`
+    /// (the default, page n down to page 1) or `forward` (page 1 up to page n).
+    /// It follows the printer's output stack, which no IPP attribute reveals.
+    #[serde(default = "backs_default")]
+    pub backs: String,
     /// Seconds to wait inside /flip before printing the backs by itself (0 = wait).
     #[serde(default)]
     pub auto_continue: u64,
@@ -65,9 +71,10 @@ pub struct Printer {
 }
 
 fn blank_default() -> String {
-    // Keep blank pages unless asked otherwise: padding an odd page count into
-    // the even pass is a fix for a specific symptom, not a safe default.
-    "none".to_string()
+    // An odd page count leaves the last sheet's back without a page. Padding
+    // that side is not cosmetic: without it the printer puts every back one
+    // sheet off. `none` stays available for printers that drop blank pages.
+    "auto".to_string()
 }
 
 fn settle_default() -> u64 {
@@ -94,6 +101,12 @@ fn first_default() -> String {
     "odd".to_string()
 }
 
+fn backs_default() -> String {
+    // Backs in reverse is the pairing for face-down output stacks, which is
+    // what most printers do unless their straight-through tray is selected.
+    "reverse".to_string()
+}
+
 impl Printer {
     /// A printer with every optional field at its default.
     pub fn new(name: &str, listen: &str, real: &str) -> Self {
@@ -106,6 +119,7 @@ impl Printer {
             poll: poll_default(),
             rotate_even: rotate_default(),
             first: first_default(),
+            backs: backs_default(),
             auto_continue: 0,
             gui: gui_default(),
             note: String::new(),
@@ -286,7 +300,10 @@ impl Config {
             }
 
             match printer.blank.as_str() {
-                "leading" | "trailing" | "none" => {}
+                // `leading` and `trailing` date from when the pad was placed
+                // by hand; the position follows the split now, so both mean
+                // `auto`.
+                "auto" | "none" | "leading" | "trailing" => {}
                 _ => return Err(crate::l10n::tr(locale, "config.err.bad_blank", &[])),
             }
             if printer.rotate_even != 0 && printer.rotate_even != 180 {
@@ -295,6 +312,10 @@ impl Config {
             match printer.first.as_str() {
                 "odd" | "even" => {}
                 _ => return Err(crate::l10n::tr(locale, "config.err.bad_first", &[])),
+            }
+            match printer.backs.as_str() {
+                "reverse" | "forward" => {}
+                _ => return Err(crate::l10n::tr(locale, "config.err.bad_backs", &[])),
             }
             if printer.settle > 600 {
                 return Err(crate::l10n::tr(locale, "config.err.bad_settle", &[]));
@@ -358,11 +379,12 @@ real = "ipp://127.0.0.1:631/printers/laser"
 "#;
         let config = Config::parse(text, Path::new("config.toml"), "en").expect("parse");
         let printer = &config.printers[0];
-        assert_eq!(printer.blank, "none");
+        assert_eq!(printer.blank, "auto");
         assert_eq!(printer.settle, 10);
         assert_eq!(printer.poll, 2);
         assert_eq!(printer.rotate_even, 0);
         assert_eq!(printer.first, "odd");
+        assert_eq!(printer.backs, "reverse");
         assert_eq!(printer.auto_continue, 0);
         assert!(printer.gui);
         assert_eq!(config.settings.language, None);
@@ -429,6 +451,10 @@ real = "ipp://127.0.0.1:631/printers/laser"
         let mut config = sample();
         config.printers[0].first = "middle".to_string();
         assert!(config.validate("en").unwrap_err().contains("odd"));
+
+        let mut config = sample();
+        config.printers[0].backs = "sideways".to_string();
+        assert!(config.validate("en").unwrap_err().contains("reverse"));
 
         let mut config = sample();
         config.printers[0].poll = 0;
