@@ -330,6 +330,9 @@ jobs:
       # enforced on ubuntu in the gui job.
       - name: The window opens and the dialog answers
         continue-on-error: true
+        # A headless GTK that never gets a window mapped can sit here until the
+        # job's own timeout; the step is allowed to fail, not to hang.
+        timeout-minutes: 10
         run: |
           set -eux
           # A container has no session bus and no GPU, and GTK4 4.22 aborts
