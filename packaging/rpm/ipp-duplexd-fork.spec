@@ -124,6 +124,12 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
 
 %changelog
 
+* Tue Nov 17 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.2
+- The printer editor is a real dialog window now instead of an AdwAlertDialog.
+  The alert caps its contents at 372sp (600sp in wide layout), narrower than a
+  printer URI or a note, so the rows ellipsized their values; the editor opens
+  at 520px, can be resized, and its hints wrap to two lines.
+
 * Tue Nov 17 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.1
 - The backs print forwards by default now (`backs = "forward"`,
   `--backs forward`); `reverse` stays for the printers that stack the sheets
