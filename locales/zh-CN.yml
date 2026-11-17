@@ -22,8 +22,8 @@ daemon.usage: |
     --blank WHERE        奇数页文档补上缺失的那一页：auto（默认）| none（不补）；
                          旧值 leading/trailing 等同于 auto
     --first SIDE         先打哪一面：odd（默认，奇数页）或 even（偶数页）
-    --backs ORDER        第二遍（背面）的顺序：reverse（默认，逆序）或
-                         forward（正序）
+    --backs ORDER        第二遍（背面）的顺序：forward（默认，正序）或
+                         reverse（逆序）
     --auto-continue N    奇数页打完后等 N 秒自动打印背面，
                          不再等待 GET /flip
     --no-gui             不弹出翻纸确认对话框（zenity/kdialog/xmessage），
@@ -297,7 +297,7 @@ gui.window.ipp_recover_action: "切回 IPP"
 gui.window.queue_busy: "正在注册 CUPS 打印队列…"
 gui.window.queue_registered: "CUPS 打印队列已注册"
 gui.window.field_blank: "缺失的一页"
-gui.window.field_blank_hint: "页数为奇数时补上不存在的那一页，背面才不会整体错一张纸"
+gui.window.field_blank_hint: "页数为奇数时补上缺失的那一页"
 gui.window.blank_auto: "补上（推荐）"
 gui.window.blank_none: "不补"
 gui.window.field_first: "先打哪一面"
@@ -305,7 +305,7 @@ gui.window.field_first_hint: "先打印哪一面"
 gui.window.first_odd: "奇数页"
 gui.window.first_even: "偶数页"
 gui.window.field_backs: "背面打印顺序"
-gui.window.field_backs_hint: "第二遍打印另一面的顺序；背面和正面对不上时切换它"
+gui.window.field_backs_hint: "第二遍的方向；背面和正面对不上时切换"
 gui.window.backs_reverse: "逆序（末页先打）"
 gui.window.backs_forward: "正序（首页先打）"
 gui.window.field_settle: "静置时间"

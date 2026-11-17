@@ -53,8 +53,8 @@ pub struct Printer {
     /// Which pages print first: `odd` (the default) or `even`.
     #[serde(default = "first_default")]
     pub first: String,
-    /// Which way the second pass (the backs) walks the other side: `reverse`
-    /// (the default, page n down to page 1) or `forward` (page 1 up to page n).
+    /// Which way the second pass (the backs) walks the other side: `forward`
+    /// (the default, page 1 up to page n) or `reverse` (page n down to page 1).
     /// It follows the printer's output stack, which no IPP attribute reveals.
     #[serde(default = "backs_default")]
     pub backs: String,
@@ -102,9 +102,9 @@ fn first_default() -> String {
 }
 
 fn backs_default() -> String {
-    // Backs in reverse is the pairing for face-down output stacks, which is
-    // what most printers do unless their straight-through tray is selected.
-    "reverse".to_string()
+    // Forwards is the pairing this program is developed against; the other
+    // kind of output stack wants `reverse`.
+    "forward".to_string()
 }
 
 impl Printer {
@@ -384,7 +384,7 @@ real = "ipp://127.0.0.1:631/printers/laser"
         assert_eq!(printer.poll, 2);
         assert_eq!(printer.rotate_even, 0);
         assert_eq!(printer.first, "odd");
-        assert_eq!(printer.backs, "reverse");
+        assert_eq!(printer.backs, "forward");
         assert_eq!(printer.auto_continue, 0);
         assert!(printer.gui);
         assert_eq!(config.settings.language, None);
@@ -481,6 +481,11 @@ real = "ipp://127.0.0.1:631/printers/laser"
             "127.0.0.1:6632",
             "ipp://127.0.0.1:631/printers/laser",
         );
+        // The shipped defaults: pad the missing page, odd pages first, backs
+        // forwards.
+        assert_eq!(printer.blank, "auto");
+        assert_eq!(printer.first, "odd");
+        assert_eq!(printer.backs, "forward");
         let config = Config::from_legacy(printer);
         config.validate("en").expect("valid");
         assert_eq!(config.printers.len(), 1);

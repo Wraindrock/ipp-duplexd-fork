@@ -23,7 +23,7 @@ daemon.usage: |
     --blank WHERE        pad the page an odd page count lacks: auto
                          (default) | none; the old leading/trailing mean auto
     --first SIDE         which pages print first: odd (default) or even
-    --backs ORDER        the second pass: reverse (default) or forward
+    --backs ORDER        the second pass: forward (default) or reverse
     --auto-continue N    print the backs N seconds after the odd pass
                          finishes instead of waiting for GET /flip
     --no-gui             do not open the flip-confirmation desktop dialog
@@ -303,7 +303,7 @@ gui.window.ipp_recover_action: "Switch to IPP"
 gui.window.queue_busy: "Registering the CUPS queues…"
 gui.window.queue_registered: "CUPS queues registered"
 gui.window.field_blank: "Missing page"
-gui.window.field_blank_hint: "An odd page count gets the page that does not exist, so the backs do not shift by one sheet"
+gui.window.field_blank_hint: "Pads the page an odd page count does not have"
 gui.window.blank_auto: "Pad it"
 gui.window.blank_none: "Skip it"
 gui.window.field_first: "Print first"
@@ -311,7 +311,7 @@ gui.window.field_first_hint: "Which pages to print first"
 gui.window.first_odd: "Odd pages"
 gui.window.first_even: "Even pages"
 gui.window.field_backs: "Back side order"
-gui.window.field_backs_hint: "Which way the second pass prints the other side; switch it if the backs do not line up with the fronts"
+gui.window.field_backs_hint: "Which way the second pass prints; switch it if the backs do not line up"
 gui.window.backs_reverse: "Reverse (last page first)"
 gui.window.backs_forward: "Forward (first page first)"
 gui.window.field_settle: "Settle time"

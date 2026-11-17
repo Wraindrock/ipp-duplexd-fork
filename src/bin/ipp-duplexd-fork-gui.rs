@@ -1602,10 +1602,11 @@ fn first_value(index: u32) -> &'static str {
     }
 }
 
-/// The combo entry for a `backs` value.
+/// The combo entry for a `backs` value; forwards is the default, so it is
+/// the first entry.
 fn backs_index(backs: &str) -> u32 {
     match backs {
-        "forward" => 1,
+        "reverse" => 1,
         _ => 0,
     }
 }
@@ -1613,8 +1614,8 @@ fn backs_index(backs: &str) -> u32 {
 /// The `backs` value behind a combo entry.
 fn backs_value(index: u32) -> &'static str {
     match index {
-        1 => "forward",
-        _ => "reverse",
+        1 => "reverse",
+        _ => "forward",
     }
 }
 
@@ -1685,8 +1686,8 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         .title(&labels.field_backs)
         .subtitle(&labels.field_backs_hint)
         .model(&gtk::StringList::new(&[
-            labels.backs_reverse.as_str(),
             labels.backs_forward.as_str(),
+            labels.backs_reverse.as_str(),
         ]))
         .build();
     backs.set_selected(backs_index(&current.backs));
@@ -1736,6 +1737,17 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         .build();
     tuning_group.add(&tuning);
 
+    // Long hints wrap instead of stretching the dialog: a row's subtitle is
+    // one line by default, which made the settings dialog grow sideways as
+    // the hints got longer.
+    let mut row = tuning.first_child();
+    while let Some(widget) = row {
+        if let Some(action) = widget.downcast_ref::<adw::ActionRow>() {
+            action.set_subtitle_lines(2);
+        }
+        row = widget.next_sibling();
+    }
+
     let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
     let fields = gtk::ListBox::new();
     fields.add_css_class("boxed-list");
@@ -1750,6 +1762,10 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
         .hscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_height(true)
         .max_content_height(560)
+        // A fixed shape for the editor: wide enough for the fields, narrow
+        // enough that the wrapped hints read as a column instead of a ribbon.
+        .min_content_width(360)
+        .max_content_width(430)
         .child(&body)
         .build();
     let dialog = adw::AlertDialog::builder()

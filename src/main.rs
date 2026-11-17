@@ -493,7 +493,7 @@ fn config_from(argv: &[String]) -> Result<Settings, String> {
     let mut auto_continue = 0u64;
     let mut rotate_even = 0u32;
     let mut first = "odd".to_string();
-    let mut backs = "reverse".to_string();
+    let mut backs = "forward".to_string();
     let mut poll = 2u64;
     let mut gui = true;
     let mut settle = 10u64;

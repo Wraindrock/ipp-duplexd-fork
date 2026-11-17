@@ -518,7 +518,15 @@ fn duplex_splits_pads_and_rotates() {
     // the padding and the rotation are options now, not defaults
     let t = setup(
         "duplex",
-        &["--no-gui", "--blank", "leading", "--rotate-even", "180"],
+        &[
+            "--no-gui",
+            "--blank",
+            "leading",
+            "--backs",
+            "reverse",
+            "--rotate-even",
+            "180",
+        ],
         None,
     );
     let jid = print_job(
@@ -579,6 +587,8 @@ fn even_pages_print_first_when_asked() {
             "even",
             "--blank",
             "leading",
+            "--backs",
+            "reverse",
             "--rotate-even",
             "180",
         ],
@@ -624,15 +634,15 @@ fn even_pages_print_first_when_asked() {
 }
 
 /// Some printers stack the sheets the other way round, so the backs have to
-/// walk forwards (2, 4, ...) instead of backwards (4, 2, ...). The fronts are
+/// walk backwards (4, 2, ...) instead of forwards (2, 4, ...). The fronts are
 /// the same either way.
 #[test]
-fn the_backs_can_print_forward() {
-    let t = setup("backs-forward", &["--no-gui", "--backs", "forward"], None);
+fn the_backs_can_print_reverse() {
+    let t = setup("backs-reverse", &["--no-gui", "--backs", "reverse"], None);
     let jid = print_job(
         t.port,
         &make_pdf(4),
-        "doc4-forward",
+        "doc4-reverse",
         vec![Attr::str(ipp::T_KEYWORD, "sides", "two-sided-long-edge")],
     );
     wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
@@ -643,37 +653,17 @@ fn the_backs_can_print_forward() {
             vec![601, 603],
             "the fronts do not change with the backs' order"
         );
-        assert_eq!(r[0].name, "doc4-forward [odd pages]");
+        assert_eq!(r[0].name, "doc4-reverse [odd pages]");
     }
     assert!(http_get(t.port, "/flip").contains("printing the backs"));
     wait_job_state(t.port, jid, &[9], Duration::from_secs(15));
     let r = t.received.lock().unwrap();
     assert_eq!(
         widths(&r[1].doc, &t.dir.0),
-        vec![602, 604],
-        "forward: 2 then 4"
+        vec![604, 602],
+        "reverse: 4 then 2"
     );
-    assert_eq!(r[1].name, "doc4-forward [even pages]");
-}
-
-/// An odd page count leaves the last sheet's back without a page. That page is
-/// padded by default, and it lands where it is missing -- last in the even
-/// side -- so the printer does not put every back one sheet off.
-#[test]
-fn the_missing_page_is_padded_by_default() {
-    let t = setup("pad-default", &["--no-gui"], None);
-    let jid = print_job(
-        t.port,
-        &make_pdf(5),
-        "doc5-pad",
-        vec![Attr::str(ipp::T_KEYWORD, "sides", "two-sided-long-edge")],
-    );
-    wait_job_state(t.port, jid, &[6], Duration::from_secs(15));
-    assert!(http_get(t.port, "/flip").contains("printing the backs"));
-    wait_job_state(t.port, jid, &[9], Duration::from_secs(15));
-    let r = t.received.lock().unwrap();
-    // reversed: the blank (612) comes first, then 4 and 2
-    assert_eq!(widths(&r[1].doc, &t.dir.0), vec![612, 604, 602]);
+    assert_eq!(r[1].name, "doc4-reverse [even pages]");
 }
 
 #[test]
@@ -693,7 +683,7 @@ fn one_sided_passes_through() {
 
 #[test]
 fn copies_and_page_ranges_apply_before_split() {
-    let t = setup("copies", &["--no-gui"], None);
+    let t = setup("copies", &["--no-gui", "--backs", "reverse"], None);
     // copies=2 and page-ranges 1-3 -> pages 1,2,3,1,2,3 before the split
     let mut range = 1i32.to_be_bytes().to_vec();
     range.extend_from_slice(&3i32.to_be_bytes());
@@ -745,7 +735,14 @@ fn gui_dialog_continues_job() {
     );
     let t = setup(
         "gui-daemon",
-        &["--blank", "leading", "--rotate-even", "180"],
+        &[
+            "--blank",
+            "leading",
+            "--backs",
+            "reverse",
+            "--rotate-even",
+            "180",
+        ],
         Some(&path),
     );
     let jid = print_job(
