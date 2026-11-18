@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        release: ["43", "44", "rawhide"]
+        release: ["43", "44", "45", "rawhide"]
     steps:
       - uses: actions/checkout@v4
 
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        release: ["43", "44", "rawhide"]
+        release: ["43", "44", "45", "rawhide"]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -238,7 +238,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        release: ["43", "44", "rawhide"]
+        release: ["43", "44", "45", "rawhide"]
     steps:
       - name: Wait until the served repository is complete
         env:
