@@ -1749,6 +1749,12 @@ fn editor(state: &Rc<State>, index: Option<usize>) {
     }
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    // The toolbox view puts the content flush against the window; the cards
+    // want the margin a preferences page would give them.
+    body.set_margin_top(12);
+    body.set_margin_bottom(12);
+    body.set_margin_start(12);
+    body.set_margin_end(12);
     let fields = gtk::ListBox::new();
     fields.add_css_class("boxed-list");
     fields.append(&name);
