@@ -178,7 +178,7 @@ impl Config {
 
     /// Parse the text of the file.
     pub fn parse(text: &str, path: &Path, locale: &str) -> Result<Config, String> {
-        let config: Config = toml::from_str(text).map_err(|e| {
+        let mut config: Config = toml::from_str(text).map_err(|e| {
             crate::l10n::tr(
                 locale,
                 "config.err.unparseable",
@@ -188,6 +188,22 @@ impl Config {
                 ],
             )
         })?;
+        // A file written before the backs option existed could not have chosen
+        // unpadded backs on purpose: "none" was the default back then. Reading
+        // it as `auto` keeps those printers from landing one sheet off; a file
+        // that carries `backs` keeps whatever it says.
+        if let Ok(value) = toml::from_str::<toml::Value>(text) {
+            if let Some(printers) = value.get("printer").and_then(|p| p.as_array()) {
+                for (index, table) in printers.iter().enumerate() {
+                    let legacy = table.get("backs").is_none();
+                    if let Some(printer) = config.printers.get_mut(index) {
+                        if legacy && printer.blank == "none" {
+                            printer.blank = "auto".to_string();
+                        }
+                    }
+                }
+            }
+        }
         Ok(config)
     }
 
@@ -388,6 +404,33 @@ real = "ipp://127.0.0.1:631/printers/laser"
         assert_eq!(printer.auto_continue, 0);
         assert!(printer.gui);
         assert_eq!(config.settings.language, None);
+    }
+
+    #[test]
+    fn a_file_from_before_backs_keeps_its_missing_page_padded() {
+        // 1.1 and earlier wrote `blank = "none"` as the default; such a file
+        // has no `backs` key. It is read as padded now, while a file that was
+        // written later and says `none` keeps that choice.
+        let legacy = r#"
+[[printer]]
+name = "d"
+listen = "127.0.0.1:6632"
+real = "ipp://127.0.0.1:631/printers/x"
+blank = "none"
+"#;
+        let config = Config::parse(legacy, Path::new("config.toml"), "en").expect("parse");
+        assert_eq!(config.printers[0].blank, "auto");
+
+        let chosen = r#"
+[[printer]]
+name = "d"
+listen = "127.0.0.1:6632"
+real = "ipp://127.0.0.1:631/printers/x"
+blank = "none"
+backs = "reverse"
+"#;
+        let config = Config::parse(chosen, Path::new("config.toml"), "en").expect("parse");
+        assert_eq!(config.printers[0].blank, "none");
     }
 
     #[test]

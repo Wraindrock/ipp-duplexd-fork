@@ -124,6 +124,12 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
 
 %changelog
 
+* Wed Nov 18 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.5
+- Printer entries from before the `backs` option existed read `blank = "none"`
+  as `auto`: that value was the old default, and with unpadded backs the
+  printer puts every back one sheet off. A file written later that says `none`
+  keeps that choice.
+
 * Wed Nov 18 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.4
 - The printer editor's content keeps a margin from the dialog edges again, so
   the printing-behaviour card is not flush with the window.
