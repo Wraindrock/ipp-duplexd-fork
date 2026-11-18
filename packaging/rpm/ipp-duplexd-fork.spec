@@ -124,6 +124,11 @@ install -Dpm644 packaging/io.github.wraindrock.ipp_duplexd_fork.png \
 
 %changelog
 
+* Wed Nov 18 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.3
+- The dnf repository carries Fedora 45 as well: the release RPM is built on
+  Fedora 45 now, but the repository metadata stopped at 44, so a Fedora 45
+  machine had nothing newer to upgrade to.
+
 * Tue Nov 17 2026 Wraindrock <Wraindrock@users.noreply.github.com> - 1.2.2
 - The printer editor is a real dialog window now instead of an AdwAlertDialog.
   The alert caps its contents at 372sp (600sp in wide layout), narrower than a
