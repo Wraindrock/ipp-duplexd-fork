@@ -1,0 +1,7 @@
+[ipp-duplexd-fork]
+name=ipp-duplexd-fork - manual duplex printing via a virtual IPP printer
+baseurl=https://wraindrock.github.io/ipp-duplexd-fork/fedora/$releasever/$basearch
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+metadata_expire=6h
